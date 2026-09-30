@@ -49,7 +49,7 @@
     \item Popular webserver implementations are Apache, Microsofts IIS and Nginx. These are mature and quite complicated programs.
     \item This lab material is focused on AppWeb which is an HTTP server supporting many embedded devices.
     \item Appweb is specifically designed to be incorporated into small IoT or lights out (LO) management devices.
-    \item In addition to HTTP, web servers are also augmented with server side scripting lanuages to include Perl, Python, Ruby, Java, PHP, ASP and many others.
+    \item In addition to HTTP, web servers are also augmented with server side scripting languages to include Perl, Python, Ruby, Java, PHP, ASP and many others.
 \end{enumerate}
 
 \section*{HTTP Overview}
@@ -59,8 +59,8 @@
     \item HTTP/2 is a more efficient expression of HTTP's semantics "on the wire", and was published in 2015; it is now supported by major web servers and browsers over Transport Layer Security (TLS) using an Application-Layer Protocol Negotiation (ALPN) extension where TLS 1.2 or newer is required.
     \item HTTP/3 is the successor to HTTP/2, using UDP instead of TCP for the underlying transport protocol. Like HTTP/2, it does not obsolete previous major versions of the protocol. HTTP/3 support was added in Cloudflare, Google Chrome, and Mozilla Firefox on 26 September 2019.
     \item HTTP supports the commands of GET, HEAD, POST, PUT, DELETE, TRACE, OPTIONS, CONNECT and PATCH
-    \item WebDav augments these commands with many more commands such as COPY, LOCK, MKCOL, MOVE, PROFIND, PROPPATCH, and UNLOCK.
-    \item Most implemententation only support a subset of these commands.
+    \item WebDav augments these commands with many more commands such as COPY, LOCK, MKCOL, MOVE, PROPFIND, PROPPATCH, and UNLOCK.
+    \item Most implementations only support a subset of these commands.
 \end{enumerate}
 
 \section*{Sample HTTP 1.1 GET Request}
@@ -80,7 +80,7 @@ Connection: Keep-Alive
 \begin{lstlisting}
 POST /cgi-bin/process.cgi HTTP/1.1
 User-Agent: Mozilla/4.0 (compatible; MSIE5.01; Windows NT)
-Host: www.exmaple.com
+Host: www.example.com
 Content-Type: application/x-www-form-urlencoded
 Content-Length: length
 Accept-Language: en-us
@@ -97,7 +97,7 @@ licenseID=string&content=string&/paramsXML=string
         \begin{enumerate}
             \item On debian "sudo apt-get install exuberant-ctags"
         \end{enumerate}
-    \item Run the ctags -R . 
+    \item Run ctags -R .
     \item A "tags" file should be placed in the current directory.
 \end{enumerate}
 
@@ -118,6 +118,42 @@ licenseID=string&content=string&/paramsXML=string
     \item What do these functions do? Why did the developer split the functionality up this way?
     \item Audit the parsing of all headers.
     \item What HTTP commands does the server implement?
+    \item Milestone: find at least one real bug in AppWeb's header handling. Write a one-paragraph bug report (description, minimized reproducer input, exploitability statement per the lecture's \textbf{From Bug to Report} section) as your deliverable for this lab.
+\end{enumerate}
+
+\section*{Heap Bug Lab: the str\_store Program}
+\begin{enumerate}
+    \item The repository ships \lstinline{heap.c}, a small string-store program with CREATE/DELETE/FIND commands. It compiles warning-free:
+        \begin{lstlisting}[language=bash]
+clang -g -O0 -fsanitize=address heap.c -o heap_demo
+        \end{lstlisting}
+    \item Baseline run (verified): CREATE "FOO", FIND "FOO", DELETE "FOO" --- all behave, exit 0. The bug needs a second DELETE.
+    \item \textbf{Exercise A --- trace the dangling pointer.} Modify \lstinline{main()} to: CREATE "A", CREATE "B", DELETE "A", DELETE "A". Rebuild and run. Observed behavior under ASan (verified on this material's reference build):
+        \begin{lstlisting}
+==pid==ERROR: AddressSanitizer: heap-use-after-free on address 0x...4d0
+READ of size 1 at 0x... thread T0
+    #0 ... in strcmp
+    #1 ... in find        heap.c:14
+    #2 ... in str_store   heap.c:31
+    #3 ... in main        heap.c:45
+0x... is located 0 bytes inside of 256-byte region
+freed by thread T0 here:
+    #1 ... in str_store   heap.c:31   (the first DELETE)
+        \end{lstlisting}
+        Answer these before running:
+        \begin{enumerate}
+            \item Why does the second DELETE of "A" not report a \emph{double-free} but a \emph{use-after-free} in \lstinline{strcmp}? (Hint: does DELETE remove the pointer from \lstinline{g_strs}? What do subsequent command lookups do with the freed entry?)
+            \item Why is there no crash without ASan? What does the second \lstinline{free(find(str))} do once ASan is out of the picture? (glibc/tcmalloc answer: double-free or corrupted freelist --- explain what each allocator does.)
+            \item Reconcile with the lecture's UAF and Double Free sections: which bug class is this \emph{in first manifestation}, and under which allocator is it the other class?
+        \end{enumerate}
+    \item \textbf{Exercise B --- fix the bug class, not the bug.} Propose the minimal structural fix that removes this entire class from the program (consider: NULL the slot on delete and have \lstinline{find()} skip freed slots; discuss why patching only the one call site does not fix DELETE of "B" after "A" leaks). Rebuild, rerun your four-command sequence, confirm clean.
+    \item \textbf{Exercise C --- exploitability pricing.} Without ASan, exercise the full command surface (many CREATEs, interleaved DELETEs, FINDs) and price the resulting primitive against the lecture's \textbf{Exploitation Mitigations} map: what would you need to groom (which allocation size class), what metadata lives in a same-size object in a real target, and which of the ``ideal heap vulnerability qualities'' are satisfied?
+    \item \textbf{Exercise C2 --- allocator internals (pairs with the primitive-to-exploit lecture).} STRLEN\_MAX is 0x100: a tcache-class size in glibc. On a Linux box (or under a glibc-accurate simulator):
+    \begin{enumerate}
+        \item Instrument CREATE/DELETE with an \lstinline{malloc_usable_size} printout and map every string to its chunk size class (0x100 payload $\to$ 0x110 chunk). Explain what lives in the first 8 bytes of a *freed* chunk of this class (tcache fd / next pointer) and connect it to what the debugging lab observed watching \lstinline{g_strs[0]} flip to \lstinline{"\\x90\\x11"} after free.
+        \item State the post-free double-serve: with the block in tcache twice (the double-DELETE), the next two CREATEs return the same pointer. Groom check: CREATE "A", CREATE "B", DELETE "A", DELETE "A", then CREATE "C", CREATE "D" --- under plain glibc print the three pointers of A's slot history. Do C and D alias A's chunk?
+        \item Now suppose a real target stores a function pointer in a 0x110-chunk object. Write the grooming sequence (in command form) that turns this program's UAF primitive into an overwrite of that pointer, and say which mitigation row (per the map) prices this attempt.
+    \end{enumerate}
 \end{enumerate}
 
 \section*{Explore Other Tools}

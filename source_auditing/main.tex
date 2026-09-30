@@ -46,9 +46,34 @@
 
 %----------------------------------------------------------------------------------------
 
+\section*{Prerequisites and Course Map}
+\begin{enumerate}
+    \item \textbf{Assumed knowledge} (not taught here; get it elsewhere first):
+    \begin{enumerate}
+        \item C fluency: pointers, integer promotion rules, struct layout and padding, common initial sequence rules, varargs. You must be able to write the code you audit.
+        \item One assembly language at reading level and its calling conventions (the binary RE module covers the mapping, but you need one to start).
+        \item Syscall literacy: what \lstinline{open/read/mmap/fork/exec} actually do, what a descriptor is, enough signal semantics to recognize what a handler may not do.
+        \item Build systems: static vs.\ dynamic linking, configuration switches (--enable/--without) and how they map to compiled-in code (the Attack Surface section leans hard on this).
+        \item Python for tooling and one scripting interface to a debugger.
+    \end{enumerate}
+    \item \textbf{Reading order} (each module assumes its predecessors):
+    \begin{enumerate}
+        \item \textbf{Source auditing}: the bug patterns, the mitigation map, and the triage pipeline are referenced by every later module. Do its lab (AppWeb, heap.c) before anything else.
+        \item \textbf{Fuzzing}: consumes the bug classes and the mitigation map; produces crash sets which its triage section converts into reports.
+        \item \textbf{Binary RE}: the no-source arm of static analysis; its examples reuse the same CVEs cited in source auditing.
+        \item \textbf{Debugging}: the dynamic-analysis craft the other modules keep alluding to; teach it after source auditing so the bug-pattern shapes are known, before exploitation.
+        \item \textbf{From primitive to exploit}: assembles the mitigation map's bypass column into techniques (code reuse, infoleak, allocator grooming).
+        \item \textbf{Linux kernel auditing}: the capstone --- all previous skills at kernel privilege, plus concurrency and elevation specifics.
+        \item \textbf{Linux and Android security models}: the enforcement layer every primitive above is priced against (credentials, capabilities, LSM/MAC, namespaces, seccomp; the Android uid sandbox, permission model, SELinux domains, Binder, verified boot); its confused-deputy and check-vs-use checklists are the authorization-side counterpart of this module's bug patterns.
+    \end{enumerate}
+    \item Each module pairs one lecture with one lab; the lab deliverable always ends in a written report in exactly the \textbf{From Bug to Report} format, because that report is the profession's unit of work.
+\end{enumerate}
+
+%----------------------------------------------------------------------------------------
+
 \section*{Introduction}
 \begin{enumerate}
-	\item The primary skill of source code auditing is identifying which code may be vulnerable and is reachable from an exposed attack surfce. Experienced code auditors are continually asking themselves the following questions:
+	\item A primary skill of source code auditing is identifying which code may be vulnerable and is reachable from an exposed attack surface. Experienced code auditors are continually asking themselves the following questions:
 		\begin{enumerate}
 			\item "Where should the limited time auditing be spent to maximize the chances of bug discovery?"
 		 	\item "What pieces of code should be checked thoroughly and which can be ignored?"
@@ -57,12 +82,13 @@
 	\item Large code bases make these questions difficult to answer. However, an experienced auditor will perform a thorough attack surface analysis and follow the logical flow of attacker data understanding and verifying each use of the data. General guidance to follow when starting any security audit is:
 	\begin{enumerate}
 		\item Learn to read and write target language (C, C++, PHP, Java, etc).
+		\item Understand the architecture in which your target will be executing (ARM, ARM64, x86, x86-64, risc-v, etc)
 		\item Know common bug patterns in the target language.
-		\item Research existing CVE's and public research about the target.
+		\item Research existing CVEs and public research about the target.
 		\item Find code which is in dis-use or rarely executed.
 		\item Code is built in layers or modules. Scope the problem by looking at layers or modules individually and studying the API's.
 		\item Find the ages of the code layers, bugs tend to be in the most recent or very old code.
-		\item Find large back-end components of the software such as memory allocators, parsing functions/libraries, JIT engines, garbage collecxtors, etc.
+		\item Find large back-end components of the software such as memory allocators, parsing functions/libraries, JIT engines, garbage collectors, etc.
 		\item Understand the purpose of the code, what the author was trying to do and how the implementation falls short.
 		\item Find the most complicated pieces of code with high cyclomatic complexity. Data structures which are used frequently or are polymorphically used (cast/unions) are important to understand.
 		\item Get a feel for the code style and find places the style is violated. This can tell you if multiple authors are writing and merging code and opens up chances for mis-communications.
@@ -77,7 +103,7 @@
 				\item Code repositories/logs
 				\item Stalk/blame bad developers
 				\item Read all comments in source
-				\item Find prior CVE's in public databases (exploitdb, cvedetails, etc)
+				\item Find prior CVEs in public databases (exploitdb, cvedetails, etc)
 			\end{enumerate}
 	\end{enumerate}
 \end{enumerate}
@@ -100,26 +126,26 @@
 			\item False negative (missed bugs) rate is a function of the auditors understanding of the attack surface and code base
 			\item Requires considerable computational/human resources to scale
 			\item Progress requires considerable internal target knowledge
-			\item Bugs found here typically include code which is localized about one area of the target. 
+			\item Bugs found here typically include code which is localized to one area of the target.
 			\item Source auditing can find non-memory corruption bugs (non-crashing) which are missed by fuzzing techniques.
 		\end{enumerate}
 \end{enumerate}
 
 \section*{Attack Surface Analysis}
 \begin{enumerate}
-	\item Attack surface analysis is the process of identifying the points of entry for any untrusted data. Knowing where incoming data is processed will dictate how an attack scenario proceeds. Attack surface analysis is valuble to source auditing to answer, "Where do I start auditing?", "What code is accessible and what code can be ignored?", "Has this code been audited or fuzzed before?", and "How many vulnerabilities have been found in this component before? Are there any left?".
+	\item Attack surface analysis is the process of identifying the points of entry for any untrusted data. Knowing where incoming data is processed will dictate how an attack scenario proceeds. Attack surface analysis is valuable to source auditing to answer, "Where do I start auditing?", "What code is accessible and what code can be ignored?", "Has this code been audited or fuzzed before?", and "How many vulnerabilities have been found in this component before? Are there any left?".
 	\item Program input vectors are:
  		\begin{enumerate}
 			\item network sockets (BSD-style sockets)
-			\item inter-process communcation (UNIX domain sockets, binder, signals, shared memory)
+			\item inter-process communication (UNIX domain sockets, binder, signals, shared memory)
 			\item memory mapped pages from the operating system (think dirty-cow)
 			\item files on the filesystem
 			\item environment variables
 			\item software or firmware update channels
  		\end{enumerate}
-	\item An important thing to keep in mind when auditing is what options where used at compile time. This will help you ignore code not compiled into the target.
+	\item An important thing to keep in mind when auditing is what options were used at compile time. This will help you ignore code not compiled into the target.
 	\item Network servers or operating systems are highly configurable and some code may be present in the source base, but not compiled into the running target binary
-	\item Software such as webservers are highly extensible meaning other software modules may or may not be present. These modules are sometime more vulnerable because they are written by third parties.
+	\item Software such as webservers are highly extensible meaning other software modules may or may not be present. These modules are sometimes more vulnerable because they are written by third parties.
 	\item Some software has features available in debug builds which are not present in the release and the opposite is true as well. For example, assert statements in Javascript engines are compiled out in release builds.
 \end{enumerate}
 
@@ -128,20 +154,40 @@
 \section*{Bug Patterns Through Small Examples}
 % Put in small examples, on each slide put how mitigations can be implemented by compiler to thwart the exploitation of these bugs
 \begin{enumerate}
-	\item Naive approach to source auditing is to find all the memcpy's, strcpy's or other patterns and then trace the parameters back to the their origin. This can be effective for smaller targets, but is not sufficient and untennable for larger targets.
+	\item Naive approach to source auditing is to find all the memcpy's, strcpy's or other patterns and then trace the parameters back to their origin. This can be effective for smaller targets, but is not sufficient and untenable for larger targets.
 	\item It is better to start from the input vector and read through the code which handles the input data. Trace the data and examine the data validation code looking for unsanitized input by ensuring all data is constrained properly.
+\end{enumerate}
+
+\textbf{The Primitive Vocabulary}
+\begin{enumerate}
+    \item Before walking the examples, fix the vocabulary. Every memory-corruption bug is described by the primitive it grants an attacker, never by the bug's name:
+    \begin{enumerate}
+        \item \textbf{Arbitrary read/write}: the attacker names the address. The strongest primitive; either one alone is usually game over.
+        \item \textbf{Relative read/write}: the attacker controls an offset added to a base they know (a heap chunk, a stack slot, a mapping). Usually paired with a leak that converts it into an absolute one.
+        \item \textbf{Controlled-length write}: the attacker controls how many bytes are written but not the content or the target.
+        \item \textbf{Controlled-content write}: the attacker controls what is written but not where or how much.
+        \item \textbf{Lifetime control}: the attacker controls when an object is freed or reused (the UAF and double-free family).
+        \item \textbf{Information disclosure}: the attacker reads memory they should not (the leak primitive every ASLR bypass needs).
+    \end{enumerate}
+    \item The audit method for every pattern below is the same three questions:
+    \begin{enumerate}
+        \item Where do the length, size, index, and pointer arguments come from, and are they validated against the destination's true size?
+        \item What does the code assume about the value after the check that an attacker can break (signedness, truncation, aliasing, lifetime)?
+        \item What primitive does the resulting corruption actually grant (the vocabulary above)? Only the third answer separates a crash from a finding.
+    \end{enumerate}
+    \item The examples below are deliberately small. The skill being taught is recognizing the shape in a large code base, not solving the toy.
 \end{enumerate}
 
 % Identify classic stack buffer overflow (cookies, stack re-ordering)
 \textbf{Stack Overflow}
 \begin{enumerate}
 	\item The classic stack overflow is simple but illustrates the fundamental reason overflows are exploitable. Stacks store in-line metadata which is critical to the control flow of a program (i.e. function return addresses and stack frame pointers).
-	\item Stacks have been exhaustively studied and modern stack overflows are hard to exploit due to fortify source protections inserted by the compiler. Stack cookies, stack variable re-ordering, safe string handling functions (think strncpy, snprintf, etc) and moving libraries to non-ascii address ranges are all mitigations to prevent exploitation.
+	\item Stacks have been exhaustively studied and modern stack overflows are hard to exploit due to FORTIFY\_SOURCE protections inserted by the compiler. Stack cookies, stack variable re-ordering, safe string handling functions (think strncpy, snprintf, etc) and moving libraries to non-ASCII address ranges are all mitigations to prevent exploitation.
 	\item Exploitation can still occur if interesting local variables exist on the stack and are referenced before the stack cookie is checked.
 	\item Noticing statically sized stack buffers is useful in finding such bugs. In addition, mis-use of the stack allocation routine alloca() can lead to a stack overflow.
 	\item A stack overflow is different from stack exhaustion. Stack exhaustion occurs when the stack runs out of space due to large allocations or deep function recursions.
-	\item One interesting strategy that continues to be exploitable is if you can write bytes to the stack at predictiable offsets. If so, then overwriting pointers on the stack is useful to shift stack frames pointers or pointers to objects onthe stack up or down into perhaps attacker controlled areas.
-	\item The following example of a stack corruption bug is based on CVE-2018-7445. Note that the alloca() (in Linux) will allocate a buffer on the stack by subtracting the size passed in from the stack pointer. This bug pattern is not possible in Windows because the alloca implementation will allocate a single page at a time and derefernece each page incrementally.
+	\item One interesting strategy that continues to be exploitable is if you can write bytes to the stack at predictable offsets. If so, then overwriting pointers on the stack is useful to shift stack frame pointers or pointers to objects on the stack up or down into perhaps attacker controlled areas.
+	\item The following example of a stack corruption bug is based on CVE-2018-7445. Note that the alloca() (in Linux) will allocate a buffer on the stack by subtracting the size passed in from the stack pointer. This bug pattern is not possible in Windows because the alloca implementation will allocate a single page at a time and dereference each page incrementally.
 \end{enumerate}
 
 \begin{sectionbox}
@@ -157,14 +203,14 @@ void read_contents(int fd, unsigned int content_length_value)
 \end{lstlisting}
 \end{sectionbox}
 
-% Identify classic heap buffer overflow (fortify source)
+% Identify classic heap buffer overflow (FORTIFY\_SOURCE)
 \textbf{Heap Overflow}
 \begin{enumerate}
   \item Exploiting a heap overflow requires knowing the implementation details. The implementation details will dictate the exploitation approach and what exploitation mitigations are present.
   \item All heap implementations follow the POSIX API or malloc(), calloc(), realloc(), free(), etc.  There are many heap allocators:
     \begin{enumerate}
-      \item dlmalloc (General)
-      \item ptmalloc2 (Glibc)
+      \item dlmalloc (general purpose)
+      \item ptmalloc2 (glibc)
       \item jemalloc (FreeBSD, Firefox)
       \item tcmalloc (Google)
       \item libumem (Solaris)
@@ -222,13 +268,13 @@ char* str_store(enum cmd c, char *str)
 \end{lstlisting}
 \end{sectionbox}
 
-% Identify classic format string bugs (fortify source, don't really exist anymore)
+% Identify classic format string bugs (FORTIFY\_SOURCE, don't really exist anymore)
 % --------------------------------------------------------------------------------
 \textbf{Format String Bugs}
 \begin{enumerate}
     \item Format strings are not found often, because they are easy for compilers to programmatically check for. The compiler can easily check if the format string is not a constant string and can also check if the number of parameters in the format string matches the number and type of arguments. This prevents the class of bug entirely.
     \item Also, FORTIFY\_SOURCE features of gcc make these bugs hard to exploit. However, there are automated libraries for exploiting these bugs now. 
-    \item If the attacker has control of the format string passed to printf, fprintf, vsprintf, sprintf, etc, then he can read memory OOB, derefence memory OOB, and with \%n feature can write attacker controlled data OOB.
+    \item If the attacker has control of the format string passed to printf, fprintf, vsprintf, sprintf, etc, then he can read memory OOB, dereference memory OOB, and with \%n feature can write attacker controlled data OOB.
     \item The \%n is widely disabled these days.
 \end{enumerate}
 \begin{sectionbox}
@@ -238,14 +284,14 @@ void format_string(char *user_controlled)
 {
     int foo = 1;
 
-    // very bad, what would "\%s", "\%n" or "\%x" do?
+    // very bad, what would "%s", "%n" or "%x" do?
     printf(user_controlled); 
 
-    // what does the "\%s" do?
-    printf("User string is \%s");
+    // what does the "%s" do?
+    printf("User string is %s");
 
-    // what does the second "\%x" print?
-    printf("User variable is var = \%x\%x", foo);
+    // what does the second "%x" print?
+    printf("User variable is var = %x%x", foo);
 }
 \end{lstlisting}
 \end{sectionbox}
@@ -320,7 +366,7 @@ void free_list() {
 \begin{enumerate}
     \item A double free will add the same pointer to the heap allocator's free list twice.
     \item Then two new allocations will be served the same free memory block which could result in a type confusion.
-    \item Most libc implementation will catch this because it's a simple check.
+	\item Most libc implementations will catch this because it's a simple check.
 \end{enumerate}
 \begin{sectionbox}
 \begin{lstlisting}[language=C, caption={Double Free}]
@@ -383,7 +429,7 @@ int main()
 \textbf{Use-after-free (UAF)}
 \begin{enumerate}
     \item A use-after-free (UAF) is problematic because an attacker may be able to replace the memory.
-    \item Critical aspects of exploitability of these bugs are the ability to spray or groom the heap to replace the memory with attacker controlle data. Then having that attacker controlled way used in an interesting way.
+    \item Critical aspects of exploitability of these bugs are the ability to spray or groom the heap to replace the memory with attacker controlled data. Then having that attacker controlled way used in an interesting way.
 \end{enumerate}
 \begin{sectionbox}
 \begin{lstlisting}[language=C, caption={Use-after-free}]
@@ -412,9 +458,9 @@ void remove_object(char *name) {
 }
 
 void print_list() {
-    Obj *c = list_head;
+    Obj *c = &list_head;
     while(c->next) {
-        printf("\%s\n", c->buf);
+        printf("%s\n", c->buf);
         c = c->next;
     }
 }
@@ -435,8 +481,8 @@ int main() {
 \textbf{Integer Overflow Example}
 \begin{enumerate}
 	\item The following code snippet is inspired by CVE-2015-3864 which is the Android StageFright bug in the MP4 parser.
-	\item The inputs to the function below are attacker controlled. Therefore, the addition and mulitplication can overflow the size of a 32 bit unsigned integer. This results in the allocation of fewer bytes than necessary.
-	\item The memcpy will then copy data into the heap. Notice that the in\_buf\_size parameter is large to hit the overflow meaning the memcpy will copy large amounts of data an most likely segfault the process when attempting to write to unallocated/unmapped pages.
+	\item The inputs to the function below are attacker controlled. Therefore, the addition and multiplication can overflow the size of a 32 bit unsigned integer. This results in the allocation of fewer bytes than necessary.
+	\item The memcpy will then copy data into the heap. Notice that the in\_buf\_size parameter is large to hit the overflow meaning the memcpy will copy large amounts of data and most likely segfault the process when attempting to write to unallocated/unmapped pages.
 	\item Many times one bug type can be transformed into another bug type. Here an integer overflow enabled a heap overflow.
 \end{enumerate}
 
@@ -466,7 +512,7 @@ void copy_buffer(unsigned char *in_buf, unsigned len)
 
 \begin{sectionbox}
 \begin{lstlisting}[language=C, caption={Signedness Issues}]
-void signed(unsigned char *in_buf, int len)
+void sample(unsigned char *in_buf, int len)
 {
     if (len < 0) return;
 
@@ -512,10 +558,10 @@ int main (int argc, char **argv) {
 
     // what happens when the wrong type is given?
     if (buf.msgType == NAME_TYPE) {
-        printf("Message: \%s\n", buf.name);
+        printf("Message: %s\n", buf.name);
     }
     else {
-        printf("Message: Use ID \%#x\n", buf.nameID);
+        printf("Message: Use ID %#x\n", buf.nameID);
     }
 
     return 0;
@@ -526,13 +572,13 @@ int main (int argc, char **argv) {
 % Information leaks/disclosure (heart bleed, unintialzed parameters)
 \textbf{Information Leaks/Disclosure}
 \begin{enumerate}
-    \item The most infamous information disclosure is HeartBleed (CVE-2014-0346) in OpenSSL which would allow a remote attacker to dump heap data from a server process.
-    \item It was called HeartBleed because the heat beat (hello I'm alive) packet in the TLS was poorly implemented in the library.
-    \item This is an example of when a bug isn't found because the attack surface goes unnotice. Typically new attack surfaces (no matter how simple) can habor bugs.
+    \item The most infamous information disclosure is HeartBleed (CVE-2014-0160) in OpenSSL which would allow a remote attacker to dump heap data from a server process.
+    \item It was called HeartBleed because the heartbeat (hello I'm alive) packet in the TLS was poorly implemented in the library.
+    \item This is an example of when a bug isn't found because the attack surface goes unnoticed. Typically new attack surfaces (no matter how simple) can harbor bugs.
 \end{enumerate}
 \begin{sectionbox}
 \begin{lstlisting}[language=C, caption={Info Leak}]
-// based on CVE-2014-0346, the attacker controls payload
+// based on CVE-2014-0160, the attacker controls payload
 // so it can be increased beyond the size of pl and returned
 // to the attacker over the socket.
 typedef struct payload {
@@ -564,9 +610,10 @@ void unlink_file(char *fname)
     if (!stat(fname, &statbuf)) return;
 
     // check if regular file
+    // BUG: == binds tighter than \& - what does this actually test?
     if (statbuf.st_mode & S_IFMT == S_IFREG) {
         // what happens if fname has shell escape characters is in it?
-        snprintf(buf, 1024, "/bin/rm \%s", fname);
+        snprintf(buf, 1024, "/bin/rm %s", fname);
 
         FILE *fp = popen(buf, "r");
         if (fp == NULL) return;
@@ -579,10 +626,9 @@ void unlink_file(char *fname)
 % Race conditions (failures to do proper locking, look at what data locks are supposed to be protecting)
 \textbf{Race Condition}
 \begin{enumerate}
-    \item Race conditions, also calls TOUTOC (for Time-of-Use,Time-of-Check), are bugs in concurrent programs (multi-threading or multi-process) where shared state is not property synchronized with the use of locking mechanisms.
+    \item Race conditions, also known as TOCTOU (Time-Of-Check to Time-Of-Use), are bugs in concurrent programs (multi-threading or multi-process) where shared state is not properly synchronized with the use of locking mechanisms.
     \item These are hard to check for using static analysis techniques such as source code auditing.
-    \item When you see locks being used or state being shared, ask "What memory and variables are shared?" and "What synchronization mechcanisms are used to serialize access (spin locks, event locks, reader/writer locks, semaphores)?"
-    \item Some race conditions are very hard to hit. Also look for global locks which will be in higher function calls. These are sometimes used as band-aids for the developers when run time is not an issue. Past Linux versions and Python2 used global locks at runtime.
+    \item When you see locks being used or state being shared, ask "What memory and variables are shared?" and "What synchronization mechanisms are used to serialize access (spin locks, event locks, reader/writer locks, semaphores)?"
     \item Some race conditions are very hard to hit. Also look for global locks which will be in higher function calls. These are sometimes used as band-aids for the developers when run time is not an issue. Past Linux versions and Python2 used global locks at runtime.
     \item Dirty Cow (CVE-2016-5195) is a very infamous race condition but too elaborate to go into here.
 \end{enumerate}
@@ -592,7 +638,7 @@ void unlink_file(char *fname)
 // switch out the file after the check?
 void racer(unsigned char *fname)
 {
-    if (!access(fname, R_OK | W_OK)) {
+    if (access(fname, R_OK | W_OK) != 0) {
         perror("file permission denied");
         return;
     }
@@ -638,20 +684,19 @@ void SSLVerifySignedServerKeyExchange()
 % Ref count bugs
 \textbf{REF Counting}
 \begin{enumerate}
-    \item Reference counting can be viewed as a memory allocator with amortized work. All references to a single object use the same underlying sturcture/object memory. Allocation happens during initialization (RAII) and free'ing happens when reference count goes to zero.
+    \item Reference counting can be viewed as a memory allocator with amortized work. All references to a single object use the same underlying structure/object memory. Allocation happens during initialization (RAII) and free'ing happens when reference count goes to zero.
     \begin{enumerate}
-        \item A put operations is decrementing (free'ing) a ref count. When refcount goes to zero, then memory is free'd.
+        \item A put operation is decrementing (free'ing) a ref count. When refcount goes to zero, then memory is free'd.
         \item A get operation is incrementing (allocating) a ref count.
     \end{enumerate}
     \item Mis-counting a refcount can lead to UAF.
     \begin{enumerate}
         \item If an attacker can invoke an extra put, then a UAF can be directly achieved.
-        \item If an attacker can invoke an extra get, then the attacker can integer overflow the refcount to zero and achieve a UAF.
+        \item If an attacker can invoke enough extra gets to integer overflow the refcount (wrapping it around to zero), the object can be prematurely free'd and a UAF achieved.
     \end{enumerate}
 \end{enumerate}
 \begin{sectionbox}
 \begin{lstlisting}[language=C, caption={Incorrect Reference Counting}]
-// reference counting structure
 struct ref {
     void (*free)(const struct ref *);
     int count;
@@ -677,30 +722,29 @@ typedef struct Obj{
 // struct/class initialization
 Obj *alloc_obj(int data) {
     // allocate memory
-    Obj *o = calloc(1, sizeof(Obj);
-    o->data = data;
+    Obj *o = calloc(1, sizeof(Obj));
+    o->refcount.free = free;
 
     // init ref count
-    o->ref.free = free;
-    ref_inc(o->ref);
+    ref_inc(\&o->refcount);
 
-    reutrn o;
+    return o;
 }
 
 int main(int argc, char **argv)
 {
     if (argc != 2) return -1;
-    uint32_t num_to_alloc = strtol(argv[1], NULL, 10);
+    long num_to_alloc = strtol(argv[1], NULL, 10);
 
     // what happens when num_to_alloc = 0xFFFFFFFF?
     Obj *o = alloc_obj(42);
-    for(int i = 0; i < num_to_alloc, i++) {
-        ref_inc(o->refcount);
+    for(int i = 0; i < num_to_alloc; i++) {
+        ref_inc(&o->refcount);
     }
 
     // de-allocations
-    for(int i = 0; i < num_to_alloc, i++) {
-        ref_dec(o->refcount);
+    for(int i = 0; i < num_to_alloc; i++) {
+        ref_dec(&o->refcount);
     }
     
 
@@ -715,25 +759,25 @@ int main(int argc, char **argv)
     \item Use of uninitialized memory can be problematic if the attacker can replace the memory on the stack or heap with their data via a groom or spray.
 \end{enumerate}
 \begin{sectionbox}
-\begin{lstlisting}[language=C, caption={Memory Used Unintialized}]
-$define ARRAY_SIZE 0x100
-$define STR_SIZE 0x10
+\begin{lstlisting}[language=C, caption={Memory Used Uninitialized}]
+#define ARRAY_SIZE 0x100
+#define STR_SIZE 0x10
 char **g_array;
-void alloc_array(int len) {
+void alloc_array(void) {
     if (!g_array) {
         g_array = malloc(ARRAY_SIZE * sizeof(char*));
         if (!g_array) return;
     }
 
-    for(int i = 0; i < ARRAY_SIZE, i++) {
-        array[i] = calloc(STR_SIZE, sizeof(char*));
+    for(int i = 0; i < ARRAY_SIZE; i++) {
+        g_array[i] = calloc(STR_SIZE, sizeof(char*));
     }
 }
 
 void use_array() {
     if (!g_array) return;
     for(int i = 0; i < ARRAY_SIZE; i++) {
-        printf("\%s\n", g_array[i]);
+        printf("%s\n", g_array[i]);
     }
 }
 
@@ -746,9 +790,9 @@ void free_array() {
 }
 
 int main() {
-    alloc_array(10);
-    free_array(10);
-    use_array(10);
+    alloc_array();
+    free_array();
+    use_array();
 }
 \end{lstlisting}
 \end{sectionbox}
@@ -762,20 +806,20 @@ int main() {
     \item As a rule of thumb, the compiler emit assembly code so that the integers are promoted to the widest type and then compared.
     \item Integer ranges:
         \begin{enumerate}
-            \item signed char: -127 to 127
+            \item signed char: -128 to 127
             \item unsigned char: 0 to 255
-            \item signed short: -32767 to 32767
+            \item signed short: -32768 to 32767
             \item unsigned short: 0 to 65535
-            \item signed int: -2147483647 to 2147483647 */
+            \item signed int: -2147483648 to 2147483647
         \end{enumerate}
 \end{enumerate}
 
 \begin{sectionbox}
-\begin{lstlisting}[language=C, caption={Memory Used Unintialized}]
-//Why does this give a strange, large integer number and not 255?
+\begin{lstlisting}[language=C, caption={Integer Promotion}]
+// Why does this give a strange, large integer number and not 255?
 unsigned char x = 0;
 unsigned char y = 1;
-printf("\%u\n", x - y); 
+printf("%u\n", x - y);
 
 // Why does this give "-1 is larger than 0"?
 unsigned int a = 1;
@@ -793,30 +837,359 @@ if(a + b > 0)
 
 %----------------------------------------------------------------------------------------
 
+\textbf{Truncation Bugs}
+\begin{enumerate}
+    \item Truncation is a special case of integer issues where a value silently passes through narrower types on its way between API layers. The value never goes negative and never overflows in the source sense --- it is simply no longer the value the author thought it was.
+    \item The dangerous pattern is a size populated at a wide API boundary (a 64-bit \lstinline{size_t}, a \lstinline{u64} from a header field) that is narrowed when passed to internal helpers taking \lstinline{int}, \lstinline{u16}, or \lstinline{u32}. Checks applied at the boundary no longer constrain the value after truncation: validating \lstinline{claimed_len <= 0x10000} against a \lstinline{u64} does nothing for a \lstinline{u16} that can never hold 0x10000.
+    \item Audit trick: find every narrowing cast/conversion between an attacker-controlled length and a \lstinline{memcpy}/\lstinline{read}/\lstinline{recv} size, and re-evaluate each check against the narrowed value, not the original.
+\end{enumerate}
+
+\begin{sectionbox}
+\begin{lstlisting}[language=C, caption={Truncation}]
+/* verified: compiles cleanly at -O0; stated mismatch intended */
+void download_chunk(int fd, uint64_t claimed_len)
+{
+    unsigned char *out;
+    int len_i;
+    uint16_t len_16;
+
+    if (claimed_len > 0x10000) {
+        printf("too big\n");
+        return;
+    }
+    len_i = (int)claimed_len;
+    len_16 = (uint16_t)len_i;   /* 0x10000 truncates to 0 */
+    out = malloc(len_16 ? len_16 : 1);
+    /* read length is up to 0x10000 into a buffer of len_16 bytes */
+    read(fd, out, len_i);
+    free(out);
+}
+\end{lstlisting}
+\end{sectionbox}
+
+\textbf{Deserialization / Parser-Trust Bugs}
+\begin{enumerate}
+    \item Any format that carries both a type tag and a length (TLV structures, serialization frameworks, config blobs, kernel netlink messages) invites the same core bug family: the consumer of the parsed structure trusts properties that were never validated together.
+    \item The two classic dissociations: (a) the length validated was the container length, while the length used to copy is the element-claimed one; (b) the type tag was validated for membership in an enum, but the consumer dispatches on a tag that implies a data layout nobody validated (type confusion at the parser boundary).
+    \item Stagefright-class parsers, browser media stacks, and protocol dissectors are full of this class. Auditing method: for each (tag, length, data) triple, ask independently --- who validated the tag? who validated the length? who validated that the layout implied by the tag matches the length?
+\end{enumerate}
+
+\begin{sectionbox}
+\begin{lstlisting}[language=C, caption={Deserialization Type Confusion}]
+/* verified: compiles cleanly at -O0; dissociations intended */
+struct msg {
+    uint8_t type;
+    uint16_t len;
+    char data[];
+};
+
+/* wire format: [1-byte type][2-byte length][data] */
+struct msg *parse_msg(const unsigned char *wire, size_t wire_len)
+{
+    struct msg *m;
+    uint16_t len;
+
+    if (wire_len < 3) return NULL;
+    len = (wire[1] << 8) | wire[2];
+
+    /* which is checked: the on-wire length or the claimed length? */
+    if (len > wire_len - 3) return NULL;
+
+    m = malloc(sizeof(*m) + len);
+    if (!m) return NULL;
+    m->type = wire[0];
+    m->len  = len;
+    memcpy(m->data, wire + 3, len);
+    return m;
+}
+
+/* consumer assumes 'type' determines the actual data layout */
+void handle_msg(struct msg *m)
+{
+    if (m->type == 1) {
+        /* data is a NUL-terminated string... is it? */
+        printf("name: %s\n", m->data);
+    } else if (m->type == 2) {
+        /* data is an array of exactly m->len 4-byte records... is it? */
+        uint32_t *recs = (uint32_t *)m->data;
+        for (int i = 0; i < m->len; i++)
+            printf("%u ", recs[i]);
+        printf("\n");
+    }
+}
+\end{lstlisting}
+\end{sectionbox}
+
+\textbf{Path and FD-Lifetime Races}
+\begin{enumerate}
+    \item Beyond the classic \lstinline{access()} TOCTOU shown earlier, two related families: (a) path races where a lstat/open pair is separated by a rename or symlink swap in a writable directory; (b) fd-lifetime bugs where a descriptor validated once is later reused for a different file.
+    \item The audit question: between the moment a path/fd/user-controlled name is checked, and the moment it is used, can some other thread or process substitute the object? Attack surface: any code running at elevated privilege writing to paths under user influence (home dirs, /tmp, spool, upload directories).
+    \item Kernel-adjacent variant: data structures holding a borrowed reference (\lstinline{struct file *}) that another thread can close mid-operation.
+\end{enumerate}
+
+\begin{sectionbox}
+\begin{lstlisting}[language=C, caption={Path Race}]
+/* verified: compiles cleanly at -O0; pattern intended */
+void append_log(const char *user_dir, const char *content)
+{
+    char path[1024];
+    int fd;
+    struct stat st;
+
+    /* victim: privileged log write inside a user-influenced
+       directory. lstat passes (regular file, not a symlink) ... */
+    snprintf(path, sizeof(path), "%s/latest.log", user_dir);
+    if (lstat(path, &st) != 0 || !S_ISREG(st.st_mode)) return;
+
+    /* ... but by the time open() runs, the user has replaced
+       latest.log with a symlink. What closes this race? */
+    fd = open(path, O_WRONLY | O_APPEND);
+    if (fd >= 0) {
+        write(fd, content, strlen(content));
+        close(fd);
+    }
+}
+\end{lstlisting}
+\end{sectionbox}
+
+\textbf{Signal-Safety and Error-Path Concurrency}
+\begin{enumerate}
+    \item Signal handlers execute as the interrupted thread: any libc function they call competes for locks the interrupted code may already hold. \lstinline{printf}, \lstinline{malloc}, and \lstinline{free} are not async-signal-safe; the safe surface is \lstinline{write()} and atomics/volatile only.
+    \item The related bug family: error paths and signal paths that free or mutate shared state concurrently with the main flow, causing double-frees or torn allocation state. In audits: for every early return, longjmp, or signal disposition, ask what cleanup runs and whether it is serialized with the main path.
+    \item This is the bridge between the Race Condition section and real-world allocator corruption: allocator state is a shared resource, and anything that touches it from an interrupt context is an immediate red flag.
+\end{enumerate}
+
+\begin{sectionbox}
+\begin{lstlisting}[language=C, caption={Async-Signal-Unsafe Handler}]
+/* verified: compiles cleanly at -O0; pattern intended */
+static char *g_buf;   /* freed and re-allocated in loop() */
+
+void handler(int sig)
+{
+    /* printf is not async-signal-safe: locks may be held by
+       the interrupted thread => deadlock or torn state.
+       What must a handler use instead? */
+    printf("signal %d, flushing %s\n", sig, g_buf);
+}
+
+void loop(void)
+{
+    for (;;) {
+        free(g_buf);
+        g_buf = malloc(0x100);  /* handler cannot tell g_buf state */
+    }
+}
+\end{lstlisting}
+\end{sectionbox}
+
+\textbf{Refcount Borrowing Bugs}
+\begin{enumerate}
+    \item The reference counting section covers over/under-decrement. A distinct family: borrowed references --- pointers returned or stored without taking a refcount. The holder assumes the borrow is scoped to a lock, a call, or an ownership relationship that some later refactor silently broke.
+    \item Audit pattern: for every structure that stores another object's pointer without a get/put pair, construct the counterexample --- what sequence of events frees the pointee while the borrower still holds it? Missing this pattern is how UAFs survive audits that checked the refcounts.
+\end{enumerate}
+
+\begin{sectionbox}
+\begin{lstlisting}[language=C, caption={Borrowed Reference}]
+/* verified: compiles cleanly at -O0; pattern intended */
+struct Obj {
+    char name[0x20];
+    struct Obj *peer;   /* borrowed reference, no refcount taken */
+    int refcnt;
+};
+
+void link(struct Obj *a, struct Obj *b)
+{
+    a->peer = b;   /* borrow without incrementing b->refcnt */
+}
+
+void drop(struct Obj *o)
+{
+    if (--o->refcnt == 0) {
+        /* what do we owe anyone who borrowed o->peer? */
+        free(o);
+    }
+}
+\end{lstlisting}
+\end{sectionbox}
+
+\textbf{Per-Pattern Summary}
+\begin{enumerate}
+    \item The same patterns, reduced to the tell an auditor greps for and the requirement an exploit has:
+\end{enumerate}
+
+\begin{center}
+\footnotesize
+\begin{tabular}{@{}p{2.5cm}|p{5.2cm}|p{6.2cm}@{}}
+\toprule
+\textbf{Pattern} & \textbf{Detection tell} & \textbf{Exploitation requirement} \\
+\midrule
+Stack overflow & fixed-size local buffer, length checked after or not at all & canary/ASLR bypass, a control-flow target (return address, saved pointer) \\
+Heap overflow & allocation size and copy length from different sources & adjacency to allocator metadata or an interesting object; a groom \\
+Format string & non-constant format argument to a \lstinline{printf} family call & \lstinline{%n} enabled, argument control, an info leak first \\
+OOB read/write & index/offset not bounded by the true size & signed offset for relative-before; absolute pointer for arbitrary \\
+Arbitrary free & attacker-influenced pointer reaching \lstinline{free} & a live object at that address (a UAF) \\
+Double free & same pointer freed twice, list entry not cleared & allocator's duplicate check bypassed, type confusion \\
+UAF & free followed by a use of the stale pointer & same-size re-allocation with attacker data, then the use \\
+Integer overflow & size arithmetic in a narrow type & allocation smaller than the subsequent copy \\
+Signedness & negative value accepted by an unsigned check & bounds check defeated by the sign, then OOB \\
+Type confusion & union/cast on an untrusted tag & layout mismatch at the use site (size, vtable, pointer type) \\
+Info leak & output length exceeds initialized data & pointer or ASLR secret in the output \\
+Command injection & unsanitized input reaching \lstinline{system}/\lstinline{popen} & shell metacharacter surviving the filter \\
+Race (TOCTOU) & check and use separated by a shared object & win the window, substitute the object \\
+Logic error & misplaced \lstinline{goto}, merge or copy-paste artifact & reachability of the branch that skips the check \\
+Refcount & get/put imbalance, refcount wrap & premature free (UAF) or never-freed leak \\
+Uninitialized & partially filled struct handed out & attacker-sprayed stale stack/heap content \\
+Integer promotion & narrow operands promoted before compare & comparison semantics differ from the source \\
+Truncation & wide value narrowed between API layers & check applied to the wide value, use of the narrow one \\
+Deserialization & type tag and length validated separately & consumer trusts the tag-implied layout \\
+Path/FD race & \lstinline{lstat}/\lstinline{open} split, fd reused later & substitute object between check and use \\
+Signal safety & non-async-signal-safe call in a handler & deadlock or torn allocator state \\
+Refcount borrow & pointer stored without a matching get & pointee freed while the borrower still lives \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+%----------------------------------------------------------------------------------------
+
+\section*{Beyond C: Recognizing Surfaces in Other Runtimes}
+Much of the industry's attack surface is not C. Recognition-level literacy in these environments prevents embarrassing mis-pricing (``that's just a webapp'') and identifies when the same audit disciplines transfer.
+
+\textbf{Server-side web applications}
+\begin{enumerate}
+    \item The memory-safety story is replaced by a trust-boundary story. The recurring classes, each with its audit question:
+    \begin{enumerate}
+        \item Injection family (SQL/OS/command/LDAP): user data concatenated into a structured string an interpreter re-parses. Audit question: every place user data meets a string that a second interpreter sees --- is it parameterized/bound or concatenated? (\textbf{Command Injection} above is the C-side member of this family; the SQL one is identical in shape with a different interpreter).
+        \item Path/IDOR (authorization by omission): object access checked by reachability, not ownership. Audit method: enumerate every object-ID in a request and, for each, ask ``can user B read user A's?'' --- privilege-model review, not parser review.
+        \item SSRF: a server-side request on an attacker-influenced URL --- audit every fetch/unserialize-target (the bug-bounty staple of the era).
+        \item Session/auth: token predictability, ``remember me'' implementations, logout that leaves server-side state valid.
+        \item Template/deserialization: template injection (SSTI) and naive object deserialization are the web's type-confusion analogues --- interpreter state shaped by the attacker.
+    \end{enumerate}
+    \item Tooling notes: the source-tree habits transfer (grep for sink APIs --- \lstinline{query(...)}, \lstinline{popen(...)}, \lstinline{requests.get(...)}, template render calls); the map from input vector (HTTP verbs, headers, cookies) to handler code is the same attack-surface analysis, with routes as the fops table.
+    \item When it merges back into this course: web servers on embedded devices (the AppWeb lab) expose both surfaces at once --- HTTP parsing bugs in C and injection bugs in the modules they host.
+\end{enumerate}
+
+\textbf{Managed runtimes (Java/C\#/Go) and scripting engines (JS/Python)}
+\begin{enumerate}
+    \item Memory corruption does not disappear; it migrates to the runtime's own trusted computing base: interpreter bugs, JIT miscompilations (the fuzzing lecture's Fuzzilli path), GC lifetime bugs (the refcount-borrow pattern in garbage-collected form), foreign-function-interface marshalling bugs (JNI, cgo --- the C layer beneath the managed one).
+    \item \emph{Type confusion} reappears as the engine's own speculative-type assumptions (JS engines' inline caches and JIT systems keyed on value shape) --- the bug class behind a decade of browser CVEs.
+    \item Audit adaptation: the trusted layer (runtime, VM, standard library) is an attack surface of its own; the defenses (bounds checks) are inherited but the invariants frequently live in native extensions, JNI bridges, or allocator-connected libraries --- audit the bridge, not the managed code.
+    \item Sandbox escape as a goal: when the runtime is itself the sandbox (browser renderer/render-process isolation; JVM plugin sandboxes), the audit target hierarchy is bridge bugs first (native code reachable from managed code), then runtime logic bugs (verifier/type-system flaws), then the substrate.
+\end{enumerate}
+
+%----------------------------------------------------------------------------------------
+
+\section*{Exploitation Mitigations: a Per-Bug-Class Map}
+Understanding which mitigations oppose each bug class is what separates ``I found a crash'' from ``I found an exploitable bug.'' A bug's exploitation cost is not a property of the bug alone but of the bug $\times$ the deployed mitigations.
+
+\begin{center}
+\footnotesize
+\begin{tabular}{@{}p{3.4cm}|p{4.4cm}|p{7.4cm}@{}}
+\toprule
+\textbf{Mitigation} & \textbf{Defeats / cripples} & \textbf{Bypassed by} \\
+\midrule
+NX / DEP & classic ret2-stack shellcode & ROP / JOP / ret2libc / ret2* \\
+Stack canaries & indiscriminate return-address overwrites & infoleak of canary, OOB read before overwrite, non-cookie-guarded locals \\
+ASLR & hardcoded addresses, non-relocatable payload links & infoleak, partial overwrites, brute force on 32-bit, side channels \\
+RELRO / GOT hardening & GOT overwrite as final step & hooking .rodata function tables, overwriting libc structures \\
+FORTIFY\_SOURCE & classical memcpy/strcpy bounds misses & truncation arithmetic, off-by-one into adjacent fields \\
+CFI / CFG & arbitrary function-pointer hijack & gadgets within valid dispatch sets, data-only attacks \\
+MTE / ASan-class checks & near-miss OOB, UAF after quarantine & tag-stable re-allocations, within-region confusion \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{enumerate}
+    \item Reading the map: mitigations are cheap, per-bug-class shifts, not absolutes. Each ``defeats/cripples'' column entry is a lowering of bug reward, and the bypass column is the auditor's mental checklist: every finding should be explicitly priced against each active mitigation on the target.
+    \begin{enumerate}
+        \item CFI deployed: prioritize data-only corruption bugs (buffer content trusted as metadata, integer-length confusion). Function-pointer hijacks are worthless.
+        \item RELRO incompletely deployed (partial): GOT overwrite is a first-class target; audit all call-out placements via \lstinline{got} writes whenever a write primitive reaches the GOT.
+        \item ASan-tagged target (test/CI builds): classic OOB gets caught immediately; fuzzing is weaker against distance-based logic bugs (races, state confusion). Adjust.
+        \item Old target with no mitigations: classic ret2stack is back on the table; prioritize the stack-overflow pattern sections again.
+    \end{enumerate}
+    \item How mitigations are wired in the compiler/OS is teachable but out of scope for this lecture; the fuzzing lecture covers sanitizer internals (ASan redzones/quarantine) which are the same map's instrumentation arm.
+\end{enumerate}
+
+%----------------------------------------------------------------------------------------
+
+\section*{From Bug to Report}
+\begin{enumerate}
+    \item When a candidate bug is found, the residual engineering follows a repeatable pipeline:
+    \begin{enumerate}
+        \item \textbf{Minimize}: reduce the trigger to the smallest input/sequence demonstrating the fault (dd bisect, delta, or a purpose-built reproducer main()).
+        \item \textbf{Stabilize}: make it deterministic. Disable ASLR if needed, pin ordering, reproduce under both sanitizer and plain builds. A report that only reproduces under debug builds will be contested.
+        \item \textbf{Root cause}: map the minimized trigger to a source-level explanation (which check is missing/wrong). If the explanation is not expressible in one or two sentences, the minimization is not done.
+        \item \textbf{Classify}: which pattern class is it (the sections above)? What primitives do you actually get (arbitrary write? controlled length? partial control?).
+        \item \textbf{Price the exploitability}: enumerate the active mitigations (map above), the attacker preconditions (local? network? authenticated?), and consequences (execution? data leak? DoS?). ``Needs another bug to be exploitable'' must be stated, not hidden.
+        \item \textbf{Write the report}: one-paragraph description; minimized reproducer; exploitability statement; affected versions/builds; suggested fix. For a course deliverable, the reproducer must run unmodified on the unmodified vendor target.
+    \end{enumerate}
+    \item The report is the profession's unit of work, so the format is fixed. Every module's lab ends in exactly this document:
+\end{enumerate}
+
+\begin{sectionbox}
+\begin{lstlisting}[language=, caption={From Bug to Report: report skeleton}]
+Title:        <component> <bug class> <impact in one line>
+Affected:     <version/build range, configuration options>
+Summary:      one paragraph: what the code does, where it goes wrong,
+              what an attacker gets.
+Reproducer:   minimized input/sequence; exact build flags and
+              environment; observed result (sanitizer output or crash).
+Root cause:   one or two sentences naming the missing/wrong check,
+              with the source location.
+Exploitability: the primitive (from the vocabulary), the active
+              mitigations and their bypass cost, the attacker
+              preconditions, and what else is required.
+Fix:          suggested change, plus the test that would have caught it.
+\end{lstlisting}
+\end{sectionbox}
+
+\begin{enumerate}
+    \item \textbf{Common report defects} (the reasons a finding is rejected, and therefore the things to get right the first time):
+    \begin{enumerate}
+        \item Non-reproducible: no exact build, no flags, no environment. Attach all three.
+        \item Unexplained root cause: the report describes the crash, not the bug. If the missing check cannot be named, minimization is not finished.
+        \item Overpriced exploitability: the report claims arbitrary write where only a controlled-length write exists. Under-claiming is safer than over-claiming; the map above prices it.
+        \item Out-of-scope target: check the vendor's or platform's scope before investing the pipeline.
+    \end{enumerate}
+    \item \textbf{Disclosure considerations} (orientation only, not legal advice):
+    \begin{enumerate}
+        \item Coordinated vs. full disclosure: coordinated (report privately, publish on fix or after a deadline) is the professional default. 90-day is the widely referenced policy; vendors' own SSRP/CSRP/similar policies have their own clocks and scope rules.
+        \item Bug bounty platforms carry their own scope: check what's in and out of scope before spending effort --- reject findings that will be closed as ``out-of-scope'' regardless of quality.
+        \item Keep reproducer material inside the reporting chain. Publishing working exploits without coordination both harms users and removes your own leverage.
+    \end{enumerate}
+    \item Exercise: for any two examples in this lecture, run the full pipeline on paper: write the one-paragraph report as if the reproducer ran on an old AppWeb version, complete with exploitability pricing.
+\end{enumerate}
+
+%----------------------------------------------------------------------------------------
+
 \section*{Source Auditing Tools}
 % Which tools and when to use them
 \begin{enumerate}
 	\item Source auditing tools can improve productivity considerably by reducing time to perform attack surface analysis, find definitions, locate calling functions, and understanding of logical flow.
+	\item The productivity argument is the same one the reversing module makes: an auditor's time is the scarce resource, so the tool's job is to rank what to read. Any tool that does not shorten the distance from an input vector to a candidate sink is not worth the setup.
 	\item Critical features of any source auditing tool are as follows.
 		\begin{enumerate}	
-			\item Navigating cross references (ctags, csope)
+			\item Navigating cross references (ctags, cscope)
 				\begin{enumerate}
 					\item Searching for definitions of functions, classes, structs, types, etc
 					\item Searching for places a function is called or referenced
+					\item The reverse dependency (who calls this) is what makes a sink reachable from an entry point; the forward dependency (what does this call) is what turns a candidate into a primitive.
 				\end{enumerate}
-			\item Understanding preprocessor directives and expand complicated macros
+			\item Understanding preprocessor directives and expand complicated macros: a large part of the real program exists only after \lstinline{#ifdef} processing, so audit the configuration the target actually ships with.
 			\item Search by file name (sublime text)
 			\item Search by struct or object type (eclipse)
-			\item Meld is a handy tool to diff source files
-			\item Joern is newer tool that allows for writing complicated queries to find vulnerable patterns in abstract syntax trees
-			\item Visual studios, Eclipse and Understand are all excellent source tools. Only Eclipse is free the others are paid.
+			\item Meld is a handy tool to diff source files, which is also how a vendor patch is read backwards into a bug.
+			\item Joern is a newer tool that allows for writing complicated queries to find vulnerable patterns in abstract syntax trees: the grep-based habits above expressed as queries over a code property graph, so that a data-flow question (does input reach this sink?) is answered mechanically.
+			\item Visual Studio, Eclipse and Understand are all excellent source tools. Only Eclipse is free; the others are paid.
+			\item Whatever the tool, the output is a set of candidates, never a set of findings. The three questions from the audit method above are still the auditor's, and the false-positive rate of every automated tool is the reason.
 		\end{enumerate}	
 \end{enumerate}
 
 %----------------------------------------------------------------------------------------
 
 \section*{Conclusion}
-Understanding code well enough to find bugs is a difficult problem which is why code reviews are still the most effective way for developers to avoid releasing buggy code. The most advanced automated source analysis tools such as those from Grammatech employ constraint solving and code simulation environments. However, all such tools suffer from high false-positive rates. Understanding which code is relevant in an attack scenario and what constitutes an exploitable bug is difficult to do in an automated fashion.
+Understanding code well enough to find bugs is a difficult problem, which is why code reviews are still the most effective way for developers to avoid releasing buggy code. The most advanced automated source analysis tools, such as those from Grammatech, employ constraint solving and code simulation environments. However, all such tools suffer from high false-positive rates: the tool can show that a path exists, but not that an attacker controls the data on it, and not what primitive the corruption grants. Understanding which code is relevant in an attack scenario and what constitutes an exploitable bug is difficult to do in an automated fashion.
+
+The conclusion for the auditor is a division of labor. Automation enumerates the surface (which entry points exist, which functions are reachable, which sinks are near attacker data); the human answers the three questions above and prices the result against the mitigation map. The rest of this course is that division of labor applied to the other families: fuzzing replaces the reachability half with execution, reversing replaces the source half when there is no source, debugging converts every hypothesis into an observation, and the exploitation module turns the primitives named above into working chains.
 
 \section*{References}
 \begin{enumerate}
@@ -824,7 +1197,7 @@ Understanding code well enough to find bugs is a difficult problem which is why 
 	\item cscope.sourceforge.net
 	\item ctags.sourceforge.net
     \item exploit-exercises.lains.space
-	\item joern.io
+	\item joern.io (code property graph queries)
 	\item meldmerge.org
 	\item pleasestopnamingvulnerabilities.com/integers.html
 	\item scitools.com (understand tool)
@@ -832,6 +1205,7 @@ Understanding code well enough to find bugs is a difficult problem which is why 
 	\item www.eclipse.org
 	\item www.fuzzingbook.com
 	\item www.grammatech.com (codesonar tool)
+	\item clang static analyzer (clang-analyzer.llvm.org), Coverity, CodeQL and Semgrep (semgrep.dev) as the automated-scanning complement to the manual audit
 	\item A Bug Hunter's Diary, Book by Tobias Klein
 	\item The Art of Software Security Assessment, Book by John McDonald, Justin Schuh, and Mark Dowd
 \end{enumerate}

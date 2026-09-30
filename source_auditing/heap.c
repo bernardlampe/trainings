@@ -39,9 +39,9 @@ char* str_store(enum cmd c, char *str)
     return ret;
 }
 
-int main()
+int main(void)
 {
-    printf("%s\n", str_store(CREATE, "FOO");
+    printf("%s\n", str_store(CREATE, "FOO"));
     printf("%s\n", str_store(FIND, "FOO"));
     printf("%p\n", str_store(DELETE, "FOO"));
 

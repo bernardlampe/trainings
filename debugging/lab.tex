@@ -1,0 +1,120 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%        Author: Bernard Lampe
+%   Debugging lab material
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% import template
+\documentclass[12pt]{Training}
+
+% import packages
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{mathpazo}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{listings}
+\usepackage{enumerate}
+\usepackage{xcolor}
+
+%----------------------------------------------------------------------------------------
+
+% set document info
+\title{Debugging Lab Material}
+\author{Dr. Bernard Lampe}
+\class{Introduction to Vulnerability Research Lab}
+\date{November 14th, 2019}
+
+%----------------------------------------------------------------------------------------
+
+% set code listing style
+\lstset{
+    basicstyle=\ttfamily\small,
+    numbers=left,
+    tabsize=2,
+    keywordstyle=\color{blue}\ttfamily,
+    stringstyle=\color{red}\ttfamily,
+    commentstyle=\color{green}\ttfamily,
+    morecomment=[l][\color{magenta}]{\#}
+}
+
+\begin{document}
+
+\maketitle
+
+%----------------------------------------------------------------------------------------
+
+\section*{Setup}
+\begin{enumerate}
+    \item Reuse two verified targets from earlier labs:
+    \begin{itemize}
+        \item \lstinline{source_auditing/heap.c} (string store; UAF on double DELETE)
+        \item \lstinline{fuzzing/targets/lab_target.c} + \lstinline{harness.c} + \lstinline{main.c} (CKS parser; stack overflow at \lstinline{lab_target.c:46})
+    \end{itemize}
+    Build both plain (no sanitizer) --- this lab observes the \emph{unsanitized} program:
+    \begin{lstlisting}[language=bash]
+clang -g -O0 ../../source_auditing/heap.c -o heap_plain
+clang -g -O0 lab_target.c harness.c main.c -o lab_plain
+    \end{lstlisting}
+    \item Debugger on this reference host is \lstinline{lldb}; gdb commands are given in comments where they differ.
+    \item Also prepare the fuzzing-lab seeds (\lstinline{seed_over}, the CREATE/DELETE driver from the source auditing lab Exercise A).
+\end{enumerate}
+
+\section*{Exercise 1 --- Watchpoint Data Tracing}
+\begin{enumerate}
+    \item Run \lstinline{lab_plain seed_over} under lldb:
+    \begin{lstlisting}[language=bash]
+lldb -- ./lab_plain seed_over
+(lldb) b lab_parse      # gdb: break lab_parse
+(lldb) run
+    \end{lstlisting}
+    \item Verified entry state on the reference build: at the first stop, \lstinline{x1} holds \lstinline{size} (0x135 = 309 for \lstinline{seed_over}) and \lstinline{x0} points into \lstinline{main}'s file-read buffer.
+    \item Step to line 46 (\lstinline{b lab_target.c:46}, then \lstinline{continue}), evaluate \lstinline{(uint64_t)&buf[64]} (verified: \lstinline{= 0x16fdfe678} on this build), and set a hardware write watchpoint on that byte:
+    \begin{lstlisting}
+# lldb
+watchpoint set expression -w write -s 1 \
+      -- *(unsigned char *)((uintptr_t)&buf[64])
+# gdb
+watch *(char*)<addr>
+    \end{lstlisting}
+    \item Observed result (verified): the plain SDK build emits \lstinline{__memcpy_chk} (FORTIFY); the program aborts inside \lstinline{__chk_fail_overflow} (exit 133, 5/5 runs) with backtrace \lstinline{__memcpy_chk <- lab_parse:46} --- the aimed-for write never happens on this build.
+    \item Rebuild with \lstinline{clang -g -O0 -D_FORTIFY_SOURCE=0 ...} and redo the watchpoint: now it fires on the genuine first OOB write, and the three facts a reporter must state can be read off the stopped frame (length, source, destination registers at the \lstinline{memcpy} call).
+    \item Lesson recorded live: FORTIFY is a mitigation arm from the lecture's map --- it \emph{moves} the crash from your watchpoint address into libc's check. Which build reveals the bug, and which merely reports it after the fact?
+\end{enumerate}
+
+\section*{Exercise 2 --- Confirm the UAF Without ASan}
+\begin{enumerate}
+    \item Apply the source-auditing lab Exercise A change to the driver (CREATE "A", CREATE "B", DELETE "A", DELETE "A") and rebuild \lstinline{heap_plain}. Verified: it still exits 0 without a sanitizer --- this is why the debugger, not the exit status, is the instrument.
+    \item In lldb, print the slot pointer (\lstinline{p g_strs[0]}) before and after the first \lstinline{free()}: verified on the reference build, it reads \lstinline{"A"} before and \lstinline{"\\x90\\x11"} after --- allocator freelist bookkeeping overwrote the string in place while the pointer stayed live in \lstinline{g_strs}.
+    \item Set a watchpoint on the freed block's first bytes and confirm: the second DELETE's \lstinline{find()} reads the corrupted (freed) memory before the second \lstinline{free()} even happens. This converts the source-auditing lab's ASan observation into instruction-level proof.
+\end{enumerate}
+
+\section*{Exercise 3 --- Breakpoint Script as an API Tracer}
+\begin{enumerate}
+    \item Script a breakpoint on \lstinline{str_store} that prints the command enum and the string argument on every hit, then continues:
+    \begin{lstlisting}[language=bash]
+(lldb) b str_store
+(lldb) breakpoint command add 1
+> frame variable c
+> p str
+> continue
+> DONE
+    \end{lstlisting}
+    \item Run the four-command driver: the trace is the program's API history without source-level printf patching.
+    \item Do the same for \lstinline{lab_parse}: print \lstinline{size} and the checksum argument of each hit. Count hits over a fuzz run: what is the gate-passing rate? (Compare with the fuzzing lab Exercise 1 numbers.)
+\end{enumerate}
+
+\section*{Exercise 4 --- The Debugger Answers the Fuzzer}
+\begin{enumerate}
+    \item Take your minimized crasher from the fuzzing lab Exercise 3 and confirm it in a no-sanitizer build under the debugger. Verified on the reference build: the SDK-default build aborts (SIGABRT, exit 133, inside \lstinline{__memcpy_chk}); the \lstinline{-D_FORTIFY_SOURCE=0} build dies by SIGABRT (exit 134, 3/3 runs) via stack-smash detection --- neither segfaults raw. Explain which mitigation arm caught each, and why earlier labs saw different exits.
+    \item Confirm the corruption itself at the byte level (verified transcript): break at \lstinline{lab_target.c:46}, \lstinline{thread until 51}; \lstinline{memory read (uintptr_t)&buf[96]} shows \lstinline{00 80 00 00} before the memcpy, \lstinline{41 41 41 41} after --- the payload landed 32 bytes past the buffer end. This is the instruction-level confirmation section for your crash report.
+\end{enumerate}
+
+\section*{Deliverables}
+\begin{enumerate}
+    \item Exercise 1's three-fact answer (length/source/destination registers).
+    \item Exercise 2's watchpoint transcript showing the UAF read.
+    \item Exercise 3's tracer scripts and hit counts.
+    \item Exercise 4's confirmation section, appended to the fuzzing-lab report.
+\end{enumerate}
+
+\end{document}

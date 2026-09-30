@@ -1,0 +1,96 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%        Author: Bernard Lampe
+%   Linux kernel auditing lab material
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% import template
+\documentclass[12pt]{Training}
+
+% import packages
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{mathpazo}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{listings}
+\usepackage{enumerate}
+\usepackage{xcolor}
+
+%----------------------------------------------------------------------------------------
+
+% set document info
+\title{Linux Kernel Auditing Lab Material}
+\author{Dr. Bernard Lampe}
+\class{Introduction to Vulnerability Research Lab}
+\date{November 7th, 2019}
+
+%----------------------------------------------------------------------------------------
+
+% set code listing style
+\lstset{
+    basicstyle=\ttfamily\small,
+    numbers=left,
+    tabsize=2,
+    keywordstyle=\color{blue}\ttfamily,
+    stringstyle=\color{red}\ttfamily,
+    commentstyle=\color{green}\ttfamily,
+    morecomment=[l][\color{magenta}]{\#}
+}
+
+\begin{document}
+
+\maketitle
+
+%----------------------------------------------------------------------------------------
+
+\section*{Introduction}
+\begin{enumerate}
+    \item This lab pairs the \textbf{Linux Kernel Auditing} lecture with a runnable user-space model of a vendor driver's ioctl/mmap surface: \lstinline{model_driver.c}. The kernel reasoning (bounds checks, copy\_from\_user sizing, reference discipline) applies unchanged; only the primitives differ.
+    \item Build (verified on the reference host):
+    \begin{lstlisting}[language=bash]
+clang -g -O1 -fsanitize=address model_driver.c -o model_driver
+    \end{lstlisting}
+\end{enumerate}
+
+\section*{Exercise 1 --- Audit the Model Driver}
+\begin{enumerate}
+    \item Read \lstinline{model_driver.c} as if its \lstinline{bank_ioctl}/\lstinline{bank_mmap} were a driver's fops. Inventory: shared state, checks applied, ordering of validation vs.\ use.
+    \item Identify the two planted bugs \emph{before} running anything:
+        \begin{enumerate}
+            \item a bounds check computed in the wrong width (u32 sum wraps: \lstinline{0xFFFFFFF0 + 0x40 == 0x30});
+            \item a \lstinline{copy_from_user} one byte short of the destination structure (uninitialized trailing field used as an access flag).
+        \end{enumerate}
+    \item For each bug: which lecture bug-pattern class is it (integer/arithmetic vs.\ uninitialized)? What user-space preconditions does an attacker need?
+\end{enumerate}
+
+\section*{Exercise 2 --- Confirm Behaviorally}
+\begin{enumerate}
+    \item Run the built driver. Verified reference behavior:
+        \begin{lstlisting}
+ok call: 0
+==...==ERROR: AddressSanitizer: BUS on unknown address ...
+==...==The signal is caused by a WRITE memory access.
+    #1 ... in bank_mmap   model_driver.c:42
+    #2 ... in bank_ioctl  model_driver.c:56
+    #3 ... in main        model_driver.c:71
+        \end{lstlisting}
+        Exit status 134.
+    \item Explain in kernel terms what this crash corresponds to: a user-supplied descriptor whose wraparound check passed, driving a memset (write path) far past the device bank. In a real driver this is a write on kernel or device memory; in our model it is caught by the C library page fault and ASan.
+    \item Fix the check (use the widest type, or \lstinline{size > len - offset} after proving \lstinline{offset <= len}) and re-run until exit 0 with both calls clean.
+    \item Fix the short \lstinline{copy_from_user} and reason: why does an uninitialized \lstinline{rw} give an attacker a read-vs-write selector on kernel memory? (Uninitialized-user-blob bugs are privilege-primitive bugs, not just infoleaks.)
+\end{enumerate}
+
+\section*{Exercise 3 --- Real Kernel Triage Drills (paper)}
+\begin{enumerate}
+    \item Pick any two CVEs from the android\_questions.txt surface list (\lstinline{binder}, \lstinline{ashmem}, \lstinline{ION}, GPU) and for each: the component, the fops/ioctl verb reached, the bug class per the lecture, the primitive granted, and the elevation mechanism (\lstinline{cred} overwrite, \lstinline{modprobe_path}, or shared-memory confusion).
+    \item Skill: connect the user-space crash hypothesis to a kernel primitive. Write both as the report pair (user-space symptom, kernel root cause) as described in the source auditing lecture's \textbf{From Bug to Report}.
+\end{enumerate}
+
+\section*{Deliverables}
+\begin{enumerate}
+    \item Driver audit inventory (Exercise 1) with the two bugs labeled.
+    \item Fixed driver source, plus a one-line ASan session proving each fix (Exercise 2).
+    \item Two paper CVE triage reports (Exercise 3).
+\end{enumerate}
+
+\end{document}

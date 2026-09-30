@@ -1,0 +1,155 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%        Author: Bernard Lampe
+%   Linux and Android security models lab material
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% import template
+\documentclass[12pt]{Training}
+
+% import packages
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{mathpazo}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{listings}
+\usepackage{enumerate}
+\usepackage{xcolor}
+
+%----------------------------------------------------------------------------------------
+
+% set document info
+\title{Linux and Android Security Models Lab Material}
+\author{Dr. Bernard Lampe}
+\class{Introduction to Vulnerability Research Lab}
+\date{December 5th, 2019}
+
+%----------------------------------------------------------------------------------------
+
+% set code listing style
+\lstset{
+    basicstyle=\ttfamily\small,
+    numbers=left,
+    tabsize=2,
+    keywordstyle=\color{blue}\ttfamily,
+    stringstyle=\color{red}\ttfamily,
+    commentstyle=\color{green}\ttfamily,
+    morecomment=[l][\color{magenta}]{\#}
+}
+
+\begin{document}
+
+\maketitle
+
+%----------------------------------------------------------------------------------------
+
+\section*{Introduction}
+\begin{enumerate}
+    \item This lab pairs the \textbf{Linux and Android Security Models} lecture with two instruments: a runnable user-space model of a privileged service's enforcement gates (\lstinline{model_deputy.c}), and enumeration on a real host or device for the parts that need a live kernel.
+    \item Build the model (verified warning-free on the reference host):
+    \begin{lstlisting}[language=bash]
+clang -g -O0 -Wall -Wextra model_deputy.c -o model_deputy
+    \end{lstlisting}
+    \item The SELinux enumeration exercises need a Linux host with SELinux enabled (Fedora/RHEL/CentOS; on Debian/Ubuntu install \lstinline{selinux-basics} and boot with \lstinline{selinux=1}). Where no such host is available, do them as paper exercises against the AOSP \lstinline{system/sepolicy} tree, which is the same data the tools read.
+\end{enumerate}
+
+\section*{Exercise 1 --- Audit the Model Deputy}
+\begin{enumerate}
+    \item Read \lstinline{model_deputy.c} as if its \lstinline{deputy_check}/\lstinline{deputy_use} pair were a privileged service's enforcement point (an LSM hook plus the operation it authorizes, or a Binder service method). Inventory: the subject, the object, the operation, and the policy data.
+    \item Identify the three planted model bugs \emph{before} running anything. Each is one property of the reference monitor from the lecture:
+    \begin{enumerate}
+        \item \textbf{incomplete mediation}: the MAC arm returns on the first rule whose domain matches and never consults the target's label, so every target inherits the first rule's verdict (a policy bug, not a memory-safety bug);
+        \item \textbf{identity not attested}: the subject is built from the client-claimed uid/domain in the request rather than from the attested subject --- the confused deputy's defining mistake;
+        \item \textbf{check-then-use}: the path is resolved once for the check and again for the operation, so the object checked need not be the object used (the source auditing lecture's path race, in authorization form).
+    \end{enumerate}
+    \item For each bug: which lecture family is it (enforcement-code, policy, or seam), and what must the attacker control to reach it?
+\end{enumerate}
+
+\section*{Exercise 2 --- Confirm Behaviorally}
+\begin{enumerate}
+    \item Run the built model. Verified reference behavior:
+    \begin{lstlisting}
+ok:          check=0 followed=0
+        use=app_data_file wrote="by deputy"
+forged uid:  check=0
+        use=app_data_file wrote="by deputy"
+wrong label: check=0
+        use=system_data_file wrote="by deputy"
+swap:        check=0 followed=0
+        use=system_data_file wrote="by deputy"
+    \end{lstlisting}
+        Exit status 0, and the transcript is byte-identical across runs. Read each record as: the check verdict, the label the use phase acted on, and the fact that the write happened (\lstinline{wrote} carries the deputy's marker).
+    \item The correct verdicts, and why the model disagrees with all three:
+    \begin{center}
+    \footnotesize
+    \begin{tabular}{@{}llll@{}}
+    \toprule
+    Call & Model says & Should be & Denying layer \\
+    \midrule
+    ok & 0 & 0 & --- \\
+    forged uid & 0 & $-2$ & DAC (uid 10001 is not owner 10002, no other bits) \\
+    wrong label & 0 & $-3$ & MAC (\lstinline{untrusted_app} may not write \lstinline{system_data_file}) \\
+    swap & 0 & 0 & --- (but the use must act on the object the check approved) \\
+    \bottomrule
+    \end{tabular}
+    \end{center}
+    \item Explain the two easier lines in kernel terms. The \lstinline{forged uid} call corresponds to a service that builds its subject from the request's uid field: the attested subject (\lstinline{app}, uid 10001) is discarded, and the deputy is made to act as root. The \lstinline{wrong label} call corresponds to a policy bug: the policy names \lstinline{system_data_file} for \lstinline{untrusted_app}, but the check never reads the target, so the rule that should deny is unreachable.
+    \item The \lstinline{swap} line is the seam bug, and it is the one that leaves no trace in the exit status: \lstinline{check=0} reports success, \lstinline{followed=0} reports that the check resolved a real file, and yet the use wrote \lstinline{system_data_file}. A real kernel equivalent is a check on a path followed by a use that re-resolves the path after an attacker-controlled rename or symlink swap.
+    \item Note one model simplification, so the demo isolates the MAC arm: the system file is given mode 0666 rather than the real 0644. In a real system both arms deny that line; the model keeps only the MAC arm in play. State what changes in the table if the mode is 0644.
+    \item Fix each bug and re-run until the transcript matches the expected column:
+    \begin{enumerate}
+        \item Bug 2: build the subject from \lstinline{attested}, not from \lstinline{req} (the comment marks the line).
+        \item Bug 1: consult the target's label --- match a rule only when both the domain and the target label match, and default to deny when no rule matches.
+        \item Bug 3: resolve once, then act on the resolved object (pass the object, not the path, to the use phase), or re-validate the resolved object before acting.
+    \end{enumerate}
+    \item For each fix, state which reference-monitor property it restores, and why a fuzzer would never have found any of the three.
+\end{enumerate}
+
+\section*{Exercise 3 --- Enumerate the Model on Linux}
+\begin{enumerate}
+    \item On the Linux reference host, establish the model layer by layer and fill the table. Use the lecture's \textbf{Enumerating the Model} recipes.
+    \begin{center}
+    \footnotesize
+    \begin{tabular}{@{}p{4.2cm}p{3.2cm}p{6.6cm}@{}}
+    \toprule
+    \textbf{Operation} & \textbf{Denying layer} & \textbf{Recipe} \\
+    \midrule
+    read another user's 0600 file & DAC & \lstinline{ls -l}, then read it as that user \\
+    write a file you do not own & DAC & \lstinline{ls -l}; compare owner and mode \\
+    read \lstinline{/etc/shadow} & DAC & \lstinline{ls -l /etc/shadow} \\
+    attach to a sibling process & Yama LSM & \lstinline{cat /proc/sys/kernel/yama/ptrace_scope} \\
+    bind a port below 1024 & capability & \lstinline{capsh --print}; \lstinline{getcap} \\
+    mount a filesystem & capability & \lstinline{unshare -Ur -m id}, then mount \\
+    write a \lstinline{/proc/sys} knob & MAC/DAC & \lstinline{ls -Z}, then write it \\
+    read a file its label forbids & SELinux & \lstinline{ls -Z}; \lstinline{ps -eZ} \\
+    \bottomrule
+    \end{tabular}
+    \end{center}
+    \item For two rows of the table, produce the actual denial. SELinux hosts log it; find it with \lstinline{ausearch -m avc} (or the kernel log), then run \lstinline{audit2allow -a} on the denial and read the \lstinline{allow} rule it prints.
+    \item For each of those two denials, answer the model questions: which subject, which object, which operation, which rule \emph{should} apply, and why the printed rule is over-broad. This is the policy-bug report in the lecture's \textbf{From Bug to Report} shape.
+    \item Pick one service domain that is permitted to act for a caller (a system service on the host, or \lstinline{system_server} on a device) and write its confused-deputy checklist answers from the lecture: the deputy, its authority, the attacker-controlled part of the request, and whether the check and the use name the same object.
+\end{enumerate}
+
+\section*{Exercise 4 --- Android Model Drills}
+\begin{enumerate}
+    \item With a device or emulator (a \lstinline{userdebug} build is easiest), run the Android enumeration recipes from the lecture and answer, with the command output as evidence:
+    \begin{enumerate}
+        \item \lstinline{adb shell id} and \lstinline{getenforce}: which uid is the shell, and which domain is it in?
+        \item \lstinline{ls -Z /data/data}: name two different app uids' directories and their labels. Why can the shell not read either, and which layer denies each (uid sandbox, SELinux, or both)?
+        \item \lstinline{ps -AZ}: find \lstinline{system_server}, \lstinline{zygote}, and one vendor HAL domain. Which of them holds the most authority, and which of them is reachable from an app over Binder?
+        \item \lstinline{cmd package list permissions -g -d} and \lstinline{dumpsys package <pkg>}: pick one \lstinline{dangerous} and one \lstinline{signature} permission and say who may hold each, and where the check is enforced.
+        \item \lstinline{service list}: pick one service and say whether an app can reach it, and which policy decides (\lstinline{binder_call}, \lstinline{service_manager}, or the permission check in the service).
+    \end{enumerate}
+    \item Paper question, one paragraph: a service performs \lstinline{checkCallingOrSelfPermission(P)} before writing a caller-supplied path. Write the subject, the deputy, the object, the intended rule, the enforced rule, and the primitive, exactly as the lecture's worked example does. Then answer: which layer should have stopped it, and why the MAC layer cannot.
+    \item Paper question, one paragraph: the bootloader is unlocked on a test device. Name the model layers that are now bypassable and the layers that are not, and say what an attacker gains and what they still cannot do.
+\end{enumerate}
+
+\section*{Deliverables}
+\begin{enumerate}
+    \item Exercise 1's three bugs, each labelled by family (enforcement-code, policy, seam).
+    \item Exercise 2's expected-vs-observed table, the three fixes, and one line per fix naming the reference-monitor property restored.
+    \item Exercise 3's completed table, two real AVC denials with the \lstinline{audit2allow} output, and the two policy-bug paragraphs.
+    \item Exercise 4's device evidence and the two model paragraphs (confused deputy and unlocked bootloader).
+\end{enumerate}
+
+\end{document}

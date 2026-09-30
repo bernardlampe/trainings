@@ -1,0 +1,278 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%        Author: Bernard Lampe
+%   Android and mobile auditing lecture material
+%
+%   Promoted from android_questions.txt (interview-grade notes),
+%   re-typeset into the course's lecture format. Content is the file's
+%   5 Linux-kernel + 9 Android questions with their answers, expanded
+%   with the kernel, SELinux, debuggerd and rooting detail the interview
+%   form assumes the reader already has.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% import template
+\documentclass[12pt]{Training}
+
+% import packages
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{mathpazo}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{listings}
+\usepackage{enumerate}
+\usepackage{xcolor}
+
+%----------------------------------------------------------------------------------------
+
+% set document info
+\title{Android and Mobile Auditing Lecture Material}
+\author{Dr. Bernard Lampe}
+\class{Introduction to Vulnerability Research}
+\date{November 28th, 2019}
+
+%----------------------------------------------------------------------------------------
+
+% set code listing style
+\lstset{
+    basicstyle=\ttfamily\small,
+    numbers=left,
+    tabsize=2,
+    keywordstyle=\color{blue}\ttfamily,
+    stringstyle=\color{red}\ttfamily,
+    commentstyle=\color{green}\ttfamily,
+    morecomment=[l][\color{magenta}]{\#}
+}
+
+%----------------------------------------------------------------------------------------
+
+\begin{document}
+
+% print title
+\maketitle
+
+%----------------------------------------------------------------------------------------
+
+\section*{Introduction}
+\begin{enumerate}
+    \item Android is a Linux kernel with a userspace and a vendor supply chain bolted on top. Everything from the Linux kernel module still applies; what changes is the shape of the attack surface, who wrote it, and which policy layer sits between an attacker and the kernel.
+    \item The module is organized as two question sets. Part I is the Linux knowledge the rest of the course assumes but never states: how the kernel exposes process state, how mappings are created, how one process manipulates another, and how the mandatory access control layer is configured. Part II is Android-specific: how a phone is rooted and debugged, what an attacker with (and without) \lstinline{adb} can reach, and how the crash-reporting pipeline works.
+    \item Read this module after the Linux kernel auditing module. The kernel module covers the generic driver surface; this module covers the vendor-written extensions of that surface and the practical mechanics of getting a shell on a phone in the first place.
+\end{enumerate}
+
+%----------------------------------------------------------------------------------------
+
+\section*{Part I: Linux-Specific Knowledge for VR}
+\begin{enumerate}
+    \item \textbf{What does the \lstinline{/proc/self/maps} file tell you and why is it important? Also, how is it implemented in the kernel?}
+    \begin{enumerate}
+        \item It can be opened and read as a regular file, and it returns a table containing the virtual memory ranges (VMAs) mapped for the current process: the exploit developer's map of protections and layout (where \lstinline{libc} is, where the stack and heap are, what is executable). Each line is
+        \begin{lstlisting}[language=,caption={One line of the process memory map, as returned by the file}]
+7f2c3a400000-7f2c3a5b1000 r-xp 00000000 08:01 1234 /system/lib64/libc.so
+        \end{lstlisting}
+        that is: start--end, permission bits (\lstinline{r}, \lstinline{w}, \lstinline{x} plus \lstinline{p} for private or \lstinline{s} for shared), the offset into the file the mapping begins at, device and inode, and the pathname.
+        \item Importance: one leaked pointer inside a mapping plus the range itself gives the address of every other symbol in that mapping. The file also reveals the ASLR slide (the load address of the executable versus its link-time address), which regions are writable, which are executable, and whether any single region is both (RWX). That is the raw material of every address-dependent exploit primitive.
+        \item Pathnames worth recognizing: \lstinline{[stack]} (the main thread stack, grown down), \lstinline{[heap]} (the \lstinline{brk}-managed region), \lstinline{[vdso]}/\lstinline{[vvar]} (kernel-supplied pages mapped into every process), \lstinline{[vsyscall]} (the fixed-address x86\_64 compatibility page), \lstinline{[uprobes]} (instrumentation), anonymous kernel files such as \lstinline{anon_inode:binder} or \lstinline{anon_inode:ashmem}, and any path ending in \lstinline{(deleted)} --- a file unlinked while still mapped, which is a common way for a dropped payload or a replaced library to hide.
+        \item It is implemented as a sequence (\lstinline{seq_file}) file type. The \lstinline{REG("maps", S_IRUGO, proc_pid_maps_operations)} registration lives in \lstinline{fs/proc/base.c} of the Linux source tree, and the operations it names (\lstinline{maps_open}, \lstinline{show_map_vma}, \lstinline{m_start}/\lstinline{m_next}/\lstinline{m_stop}) are implemented in \lstinline{fs/proc/task_mmu.c}. Reads walk the VMA list hanging off the target's \lstinline{struct mm_struct} (\lstinline{mm->mmap}) while holding \lstinline{mmap_lock}.
+        \item Reading another process's \lstinline{/proc/<pid>/maps} requires \lstinline{PTRACE_MODE_READ}, enforced by \lstinline{ptrace_may_access()}. That is the same permission check that gates \lstinline{/proc/<pid>/mem} and \lstinline{process_vm_readv}, so an Android app cannot read another app's layout even though the DAC mode bits are world-readable.
+        \item Related interfaces in the same family: \lstinline{/proc/self/smaps} (per-mapping resident, dirty and swap accounting, plus the kernel's page size), \lstinline{/proc/self/smaps_rollup} (the aggregate), \lstinline{/proc/self/map_files} (symlinks from each range to its backing file) and \lstinline{/proc/self/numa_maps}. When \lstinline{maps} is insufficient, \lstinline{smaps} shows whether a page is shared, which decides whether a heap groom can touch it.
+    \end{enumerate}
+    \item \textbf{What are the uses of \lstinline{mmap}? What are some bugs regularly found in \lstinline{mmap}?}
+    \begin{enumerate}
+        \item Anonymous allocations: \lstinline{mmap(NULL, len, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0)} is the general-purpose allocator for large blocks and for thread stacks; glibc itself uses it for large \lstinline{malloc} requests. \lstinline{MAP_FIXED} turns it into a deterministic-layout primitive: the caller names the exact address, which is how an exploit places a fake structure or a ROP stack where it needs it.
+        \item File-backed mappings: a file is mapped without syncing all of its contents into physical memory at once; pages are faulted in on demand and shared through the page cache. Dynamic-linker loading of every \lstinline{PT_LOAD} segment is itself a sequence of \lstinline{mmap} calls, which is why a leak of one \lstinline{libc} address yields the whole library.
+        \item Device memory exported to userspace: drivers (notably GPUs) use their \lstinline{file_operations.mmap} handler to export or import virtual pages from the device. This is the direction that matters for exploitation: kernel memory is being mapped into an attacker's address space, so the bounds checks on \lstinline{vma->vm_pgoff} and the requested length are what stand between the attacker and kernel physical pages.
+        \item The kernel path: \lstinline{mmap} $\to$ \lstinline{ksys_mmap_pgoff} $\to$ \lstinline{vm_mmap_pgoff} $\to$ \lstinline{do_mmap} $\to$ \lstinline{mmap_region} $\to$ \lstinline{get_unmapped_area} $\to$ \lstinline{file->f_op->mmap}. The driver handler receives a \lstinline{struct vm_area_struct *} whose \lstinline{vm_pgoff}, \lstinline{vm_start}, \lstinline{vm_end}, \lstinline{vm_flags} and \lstinline{vm_ops} are all attacker-influenced.
+        \item Bug patterns regularly found in \lstinline{mmap}:
+        \begin{enumerate}
+            \item Missing bounds checks: \lstinline{remap_pfn_range} or \lstinline{vm_insert_page} called with an offset or size that was never validated against the device's own memory region.
+            \item Integer overflows in sizes: \lstinline{offset + size} computed in 32 bits where either operand can be attacker-chosen, so a wrapped sum passes the check while the real range does not (the \lstinline{model_driver.c} companion in the Linux kernel module reproduces exactly this shape).
+            \item Out-of-bounds accesses through the \lstinline{vm_operations_struct} attached to a mapped region: a \lstinline{.fault} or \lstinline{.access} handler that trusts \lstinline{vm_pgoff} without re-checking it, or an \lstinline{.open}/\lstinline{.close} handler with a lifetime bug.
+            \item Missing \lstinline{VM_IO}/\lstinline{VM_PFNMAP}/\lstinline{VM_DONTEXPAND} flags, so the resulting mapping can be \lstinline{mremap}ed, \lstinline{fork}ed or written in ways the driver did not intend.
+            \item Page-alignment mistakes: the offset of a file-backed mapping must be page-aligned; a driver that scales \lstinline{vm_pgoff} by its own page size without checking can index outside its region.
+            \item Races with \lstinline{munmap}/\lstinline{mremap}/\lstinline{fork} (CVE-2016-5195, Dirty COW, is the canonical private-mapping race).
+        \end{enumerate}
+        \item Reference: https://labs.f-secure.com/assets/BlogFiles/mwri-mmap-exploitation-whitepaper-2017-09-18.pdf
+    \end{enumerate}
+    \item \textbf{Explain \lstinline{ptrace}. How might you inject code into another process using \lstinline{ptrace}?}
+    \begin{enumerate}
+        \item \lstinline{ptrace} is a syscall (the entry point \lstinline{sys_ptrace} is implemented in \lstinline{kernel/ptrace.c}, with the per-architecture request handlers in \lstinline{arch/*/kernel/ptrace.c}) that lets one user-space process trace and debug another. Enforcement of DAC/MAC permissions happens in the kernel before the attach succeeds: DAC through \lstinline{ptrace_may_access()} and MAC through the LSM \lstinline{security_ptrace_access_check} hook (plus Yama's \lstinline{ptrace_scope} on many distributions).
+        \item The interface can attach or stop a process, inspect and modify its virtual memory and registers, and single-step or syscall-stop it. The request set worth knowing: \lstinline{PTRACE_ATTACH}/\lstinline{PTRACE_DETACH}, \lstinline{PTRACE_SEIZE}/\lstinline{PTRACE_INTERRUPT} (attach without stopping, stop on demand), \lstinline{PTRACE_PEEKTEXT}/\lstinline{PTRACE_PEEKDATA}, \lstinline{PTRACE_POKETEXT}/\lstinline{PTRACE_POKEDATA}, \lstinline{PTRACE_GETREGS}/\lstinline{PTRACE_SETREGS}, \lstinline{PTRACE_GETREGSET}/\lstinline{PTRACE_SETREGSET} (portable, per-architecture register sets), \lstinline{PTRACE_CONT}, \lstinline{PTRACE_SINGLESTEP}, \lstinline{PTRACE_SYSCALL} and \lstinline{PTRACE_SETOPTIONS} (which enables \lstinline{PTRACE_O_TRACESYSGOOD}, \lstinline{PTRACE_O_EXITKILL}, \lstinline{PTRACE_O_SUSPEND_SECCOMP} and the rest of the event options).
+        \item Injection sequence (the standard code-injection walk):
+        \begin{enumerate}
+            \item \lstinline{PTRACE_ATTACH}, or \lstinline{fork} $+$ \lstinline{exec} with \lstinline{PTRACE_TRACEME}; stopping the group leader is ideal because it stops the whole thread group.
+            \item For a multi-threaded target, attach to each thread individually --- the tracer must enumerate \lstinline{/proc/<pid>/task}.
+            \item Back up the current page at the program counter using \lstinline{PTRACE_PEEKTEXT}.
+            \item Back up the register state with \lstinline{PTRACE_GETREGS} (or \lstinline{PTRACE_GETREGSET}).
+            \item Overwrite the executing page with shellcode using \lstinline{PTRACE_POKETEXT}.
+            \item \lstinline{PTRACE_CONT} the thread.
+            \item Have the shellcode trap when it is done (\lstinline{int3} on x86, \lstinline{brk} on ARM64) so the tracer regains control.
+            \item Restore the original page and register state.
+            \item \lstinline{PTRACE_DETACH}.
+        \end{enumerate}
+        \item Alternatives that need no \lstinline{ptrace} attach at all, but the same permission check: \lstinline{process_vm_readv}/\lstinline{process_vm_writev} and reads/writes to \lstinline{/proc/<pid>/mem}. Debuggers use these because they are far faster than \lstinline{PTRACE_PEEKDATA} word-by-word, and \lstinline{gdb}'s \lstinline{call} command uses exactly this path to run a function inside the inferior.
+        \item Android specifics: SELinux gates \lstinline{ptrace} between domains, so a normal \lstinline{untrusted_app} cannot attach to another app or to \lstinline{system_server}. The practical routes are a \lstinline{userdebug}/\lstinline{eng} build with \lstinline{adb root}, a debuggable application (\lstinline{android:debuggable="true"}), or the \lstinline{run-as} path for a debuggable package. \lstinline{adbd} running as \lstinline{shell} can attach to processes the \lstinline{shell} domain is allowed to reach, which is why \lstinline{gdbserver} is started as root in the standard recipe below.
+    \end{enumerate}
+    \item \textbf{Describe how SELinux policies are used. How would you check the context of a file system object and a process? What file systems support SELinux and which do not?}
+    \begin{enumerate}
+        \item SELinux is a mandatory access control (MAC) policy enforced at the syscall gateways and other chokepoints in the kernel. The kernel exposes a consistent interface for any security module (the LSM hooks covered in the kernel lecture), so SELinux, SMACK and AppArmor all enforce through the same call sites.
+        \item The current process context lives in \lstinline{/proc/self/attr/current} --- read that file (or \lstinline{id -Z} on a host, \lstinline{ps -Z} for every process). A context has the form \lstinline{user:role:type:level}, e.g.\ \lstinline{u:r:untrusted_app:s0:c512,c768}. Bionic (Android's libc) writes to these files to set policy knobs, and \lstinline{setexeccon}/\lstinline{setcon} move a process between domains.
+        \item Transitions are the part that matters: a \lstinline{type_transition} rule says which domain a process enters when it executes a file. The classic Android example is \lstinline{init} entering the \lstinline{zygote} domain and \lstinline{zygote} forking into \lstinline{untrusted_app} for an app; an audit of a service is incomplete without the domain it runs in.
+        \item File-system objects: query with \lstinline{ls -Z}, \lstinline{stat}, or directly with the \lstinline{security.selinux} extended attribute (\lstinline{getfattr -n security.selinux}). The expected context for a path comes from \lstinline{file_contexts}, and \lstinline{restorecon} re-applies it.
+        \item AVC denials (the enforcement events) are logged to the kernel ring buffer and the audit log: \lstinline{dmesg | grep avc} or \lstinline{/data/misc/audit/audit.log}. \lstinline{getenforce}/\lstinline{setenforce 0} show and relax the global mode (permissive mode logs but does not deny, and requires root).
+        \item File systems: \lstinline{ext4} (Android's principal file system) supports extended attributes and therefore native SELinux labeling; so do \lstinline{f2fs}, \lstinline{xfs} and \lstinline{btrfs}. \lstinline{vfat}/\lstinline{exfat} have no extended attributes, so the Android kernel compensates with hard-coded contexts supplied by the FUSE \lstinline{sdcard} daemon (formerly the \lstinline{sdcardfs} kernel shim) and with \lstinline{genfs_contexts} entries, or with the \lstinline{context=} mount option for removable media.
+        \item Android specifics: SELinux is enforcing by default since Android 5.0 (permissive by default from 4.3), the policy is split into \lstinline{plat}/\lstinline{vendor}/\lstinline{product} partitions, and \lstinline{neverallow} rules constrain what a vendor policy can grant. Because it is a policy, not a bug boundary, a driver reachable by a labeled domain is reachable: SELinux changes who can reach the surface, never whether the surface has bugs.
+    \end{enumerate}
+    \item \textbf{What do you initially look for when auditing Linux source?}
+    \begin{enumerate}
+        \item Custom vendor code that is not in the mainline, especially drivers. The mainline is fuzzed and audited for years; the vendor drop is not.
+        \item Custom \lstinline{mmap} code, for the reasons in Question 2 above.
+        \item Custom \lstinline{ION}/\lstinline{DMA-BUF} ioctls and allocator interfaces, where every new handle type is a new parser with new size and flag arithmetic.
+        \item Inconsistent code quality or code style --- a strong signal that a piece of code was written by a different team, under different review, at a different time.
+        \item Excessive comments that may signal imprecise logic; a comment explaining what a check is supposed to do is a good place to check whether it does it.
+        \item Interfaces between large subsystems, and consistency between the two sides of each interface: the \lstinline{compat_ioctl} path for a 64-bit kernel with a 32-bit caller is the classic mismatch.
+        \item The 32-bit compatibility paths, uninitialized stack or heap structures handed back with \lstinline{copy_to_user}, and unchecked \lstinline{copy_from_user} return values are the recurring shapes in vendor drivers.
+    \end{enumerate}
+\end{enumerate}
+
+%----------------------------------------------------------------------------------------
+
+\section*{Part II: Android-Specific Auditing}
+\begin{enumerate}
+    \item \textbf{What are the differences between Android and Linux distributions?}
+    \begin{enumerate}
+        \item Android adds, on top of a Linux kernel:
+        \begin{enumerate}
+            \item Binder IPC --- the process-to-process RPC and object model, plus the driver's own attack surface (CVE-2019-2215 was a Binder use-after-free).
+            \item Ashmem shared memory (historically, an anonymous shared-memory allocator; deprecated in favour of \lstinline{memfd} on newer kernels).
+            \item ION allocators (historically, a vendor memory allocator exposed to userspace; deprecated in favour of DMA-BUF heaps).
+            \item TrustZone drivers --- the userspace-visible half of the ARM secure world interface.
+            \item Trustlets --- the small applications running inside the secure world.
+            \item Android DSP RPC (the \lstinline{adsprpc} drivers on Qualcomm platforms) --- remote procedure calls into the DSP.
+            \item \lstinline{dm-verity} for system integrity checking at boot, and Android Verified Boot (AVB) above it.
+            \item Android-specific security mechanisms: Knox and TIMA and Real-time Kernel Protection (RKP) on Samsung, \lstinline{cryptfs} and file-based encryption (FBE), plus the \lstinline{keystore}/\lstinline{keymaster}/\lstinline{gatekeeper} services.
+            \item The Android userspace itself: \lstinline{zygote}, \lstinline{system_server}, \lstinline{bionic} (not glibc), the HALs (HIDL/AIDL), and the hardware abstraction layers behind \lstinline{hwservicemanager}/\lstinline{servicemanager}.
+        \end{enumerate}
+        \item Consequences for the auditor: the vendor half of the tree is written by a different team, reviewed by a different process and often not fuzzed at all. The vendor additions are the audit queue, exactly as in the kernel module.
+    \end{enumerate}
+    \item \textbf{Walk through the process of debugging a binary on the phone.} (Some of these steps can be reordered.)
+    \begin{enumerate}
+        \item Root the phone if you need to debug a system application (\lstinline{vold}, \lstinline{system_server}, \lstinline{init}, etc). On a \lstinline{userdebug} or \lstinline{eng} build \lstinline{adb root} is enough; on a production build the phone must be rooted first (Question 4).
+        \item Use \lstinline{adb} to push \lstinline{gdbserver} onto the phone --- preferably the \lstinline{gdbserver} included in the NDK, with the API version matching the phone.
+        \item \lstinline{adb} forward the TCP port you will use for the GDB remote protocol:
+        \begin{lstlisting}[language=bash]
+$ adb forward tcp:1234 tcp:1234
+        \end{lstlisting}
+        \item Attach \lstinline{gdbserver} to the target process:
+        \begin{lstlisting}[language=bash]
+$phone gdbserver --attach :1234 <pid>
+        \end{lstlisting}
+        \item From the host, connect with architecture-appropriate \lstinline{gdb} (prefer \lstinline{gdb-multiarch} on Ubuntu):
+        \begin{lstlisting}[language=bash]
+$host gdb-multiarch
+> target remote :1234
+        \end{lstlisting}
+        \item Point the debugger at the target's own libraries so symbols and shared-library addresses resolve:
+        \begin{lstlisting}[language=bash]
+> set sysroot /tmp/pulled-system
+> set solib-search-path /tmp/pulled-system/lib64
+> sharedlibrary
+        \end{lstlisting}
+        \item The LLDB equivalent, which is what Android Studio's native debugger uses under the hood:
+        \begin{lstlisting}[language=bash]
+$ lldb-server platform --server --listen *:1234     # on the device
+$ lldb
+> platform select remote-android
+> platform connect connect://<host>:1234
+> process attach --pid <pid>
+        \end{lstlisting}
+        \item For an application rather than a daemon, a debuggable build and \lstinline{run-as <package>} avoid the root requirement entirely.
+    \end{enumerate}
+    \item \textbf{What types of problems are typical when debugging remotely with \lstinline{gdbserver}?}
+    \begin{enumerate}
+        \item \lstinline{gdb} infers ARM/AArch64 from the loaded executable, but on 32-bit systems it cannot tell whether the processor is in ARM or Thumb mode --- set the mode explicitly (\lstinline{set arm force-mode thumb}). This may require reversing the code to determine which mode a particular text address runs in.
+        \item \lstinline{gdb} is sensitive to the debugger version pairing: match the \lstinline{gdbserver} version against the host \lstinline{gdb}/\lstinline{gdb-multiarch}. A mismatch shows up as \lstinline{Remote 'g' packet reply is too long}, a truncated register set, or an inability to read memory at all.
+        \item Missing symbols: a stripped system library yields meaningless frames. Pull the target's libraries to the host and set \lstinline{sysroot}/\lstinline{solib-search-path}, or use \lstinline{ndk-stack} against a tombstone for the crash path.
+        \item Permissions: SELinux may deny the attach, and \lstinline{ptrace_scope} may forbid attaching to a non-child. \lstinline{setenforce 0} on a \lstinline{userdebug} build, or attach as root, resolves most of these.
+        \item ASLR and timing: the address layout differs between runs, and the remote stub perturbs timing enough that race bugs can disappear or appear under the debugger.
+    \end{enumerate}
+    \item \textbf{Walk through typical ways to root Android phones.}
+    \begin{enumerate}
+        \item Open developer mode by repeatedly clicking Build Number in the About Phone settings.
+        \item OEM-unlock the bootloader using the Developer mode menu (\lstinline{fastboot flashing unlock}, or the vendor-specific \lstinline{fastboot oem unlock}); this usually wipes userdata.
+        \item Install TWRP via \lstinline{fastboot} (or Odin on Samsung, Flashtool on MediaTek), which is usually vendor-specific. Booting the recovery image directly with \lstinline{fastboot boot twrp.img} avoids flashing it at all.
+        \item Boot into recovery mode, which brings up TWRP.
+        \item Install SuperSU or Magisk. Modern systemless root (Magisk) patches the boot ramdisk rather than the system partition, which is what survives \lstinline{dm-verity} and OTA updates.
+        \item Reboot and \lstinline{su}.
+    \end{enumerate}
+    \item \textbf{What problems could you run into along the way when rooting a phone?}
+    \begin{enumerate}
+        \item Bootloader unlock blocked by a carrier lock (Verizon, AT\&T), or by the OEM-unlock waiting period (some vendors enforce a multi-day delay before the toggle becomes usable).
+        \item TWRP misbehaving, sometimes with no error message at all; on A/B devices the wrong slot can be the culprit.
+        \item \lstinline{dm-verity}: try the no-verity option from TWRP, or flash a \lstinline{vbmeta} image with verification disabled.
+        \item File-based encryption: the userdata partition may have to be formatted before root will boot, which loses all data.
+        \item Vendor-specific lock state: RMM/KG (Knox Guard) ``prenormal'' state on Samsung blocks the unlock until the device has been online for the required period.
+        \item Integrity attestation: SafetyNet (now Play Integrity) detects the unlocked bootloader and the root itself, which matters for applications that check it.
+        \item If the phone cannot be permanently rooted, a TempRoot --- a fancy name for an exploit --- is the fallback. Hopefully one exists for the target version.
+        \item Many other random things, including OTA updates silently reverting a root and the device entering a boot loop after a bad Magisk module.
+    \end{enumerate}
+    \item \textbf{With an \lstinline{adb} session on the phone, what is the attack surface to reach the kernel?}
+    \begin{enumerate}
+        \item Kernel drivers with \lstinline{/proc} entries --- write and ioctl handlers registered through \lstinline{proc_create} are reachable with only the DAC mode bits and the SELinux label as a gate.
+        \item Kernel drivers exposing \lstinline{/dev} entries --- the \lstinline{file_operations} verbs of each character device.
+        \item \lstinline{debuggerd}/\lstinline{crash_dump} processing of executables --- a parser of attacker-authored crash state.
+        \item GPUs: Mali and \lstinline{kgsl} (Adreno) --- the largest vendor-written surface on a modern phone.
+        \item Special file-system operations, for example the \lstinline{cryptfs} functions and the FUSE-based storage daemon.
+        \item Daemons listening on UNIX domain sockets --- \lstinline{vold}, \lstinline{netd}, \lstinline{installd}, \lstinline{zygote} and the vendor HALs.
+        \item Android services, especially those that do not check root or are vendor-provided --- Binder services reachable from a \lstinline{shell} or app context.
+        \item Binder itself --- CVE-2019-2215 is the canonical Binder use-after-free, and the driver remains a high-value target.
+        \item TrustZone drivers (\lstinline{qseecom} and friends) --- the userspace-visible half of the secure world interface.
+        \item Kernel helper interfaces reachable from a shell: \lstinline{keyctl}, \lstinline{bpf}, \lstinline{io_uring} on newer kernels, \lstinline{userfaultfd} and perf events, as listed in the kernel module.
+    \end{enumerate}
+    \item \textbf{If you could not get \lstinline{adb}, what is the attack surface for initial access?}
+    \begin{enumerate}
+        \item USB: the device mounts as a mass-storage device, or enumerates as a host USB keyboard/mouse (a malicious peripheral can inject input), or as Ethernet-over-USB.
+        \item The cell baseband processor --- see the baseband research by Amat Cama; the modem parses attacker-authored frames from the network before any userspace runs.
+        \item Bluetooth --- \lstinline{BlueBorne} (CVE-2017-1000251 and its siblings) and \lstinline{BlueFrag} (CVE-2020-0022) are the reference examples.
+        \item Near-field communication (NFC) --- tag and peer-to-peer parsing, historically a source of memory-corruption bugs.
+        \item Wi-Fi --- the supplicant and the Broadcom/Qualcomm firmware beneath it (\lstinline{Broadpwn}, CVE-2017-9417) are reachable from radio range.
+        \item Over-the-air messaging: MMS and the media parsers behind it, the surface that carried Stagefright (CVE-2015-3864).
+    \end{enumerate}
+    \item \textbf{How does \lstinline{debuggerd}/\lstinline{crash_dump} work?}
+    \begin{enumerate}
+        \item Before Android 8 (Oreo): \lstinline{debuggerd} was a daemon and any process could forward its pid to it over a UNIX domain socket. Bionic installed signal handlers via the dynamic linker; on \lstinline{SIGSEGV} the handler sent the pid to \lstinline{debuggerd}, which (having ptrace ability) stopped the process, attached to it and wrote a tombstone file.
+        \item Android 8 and above: the \lstinline{debuggerd} daemon is gone. The linker installs the signal handlers, which invoke \lstinline{/system/bin/crash_dump32} or \lstinline{/system/bin/crash_dump64}. When this is launched, it attaches to the crashing process and creates the tombstone, brokered through the \lstinline{tombstoned} daemon so that only one crash is collected at a time.
+        \item The tombstone is written under \lstinline{/data/tombstones/tombstone_XX} and contains the thread list, registers, the memory map and a stack dump. \lstinline{ndk-stack} (or \lstinline{debuggerd -b <pid>}) symbolicate it against the matching \lstinline{symbols} directory.
+        \item Related surfaces in the same pipeline: \lstinline{ANR} traces (a \lstinline{SIGQUIT} sent to an unresponsive process dumps Java thread stacks to \lstinline{/data/anr/}), \lstinline{dropbox} entries under \lstinline{/data/system/dropbox}, and \lstinline{logcat} tags such as \lstinline{DEBUG} and \lstinline{tombstoned}.
+    \end{enumerate}
+    \item \textbf{How do you emulate Android?}
+    \begin{enumerate}
+        \item The Android-x86 project is usable: it runs in VMware/QEMU/VirtualBox, and you can compile custom kernels and AOSP --- https://www.android-x86.org/.
+        \item AOSP's own virtual device (\lstinline{cuttlefish}, driven by \lstinline{cvd}) runs the real system images on QEMU or CrosVM, which is the closest thing to a stock Android target that can still be instrumented.
+        \item The SDK emulator (\lstinline{emulator} with an AVD) supports \lstinline{-writable-system} for a writable system partition, \lstinline{-show-kernel} for kernel logs, and \lstinline{-qemu -s -S} to attach a kernel debugger through the same GDB remote protocol as the debugging module.
+        \item Container-based approaches (\lstinline{Waydroid}, \lstinline{Anbox}) run the Android userspace against the \emph{host} kernel, which makes them useless for kernel auditing but convenient for userspace work.
+        \item The downside of all emulation: you lose the vendor-specific code and TrustZone entirely, the kernel is a generic \lstinline{goldfish} one, and the baseband and GPU are not the real thing. Kernel debugging on a physical phone, by contrast, is hard to obtain, which is why emulation is the standard first target.
+    \end{enumerate}
+\end{enumerate}
+
+%----------------------------------------------------------------------------------------
+
+\section*{How This Module Maps to the Course}
+\begin{enumerate}
+    \item The kernel lecture's driver-auditing discipline is applied here to Android's vendor surfaces (Binder, ashmem, ION/DMA-BUF, GPU drivers); the debugging module's remote-\lstinline{gdb} section is realized as the \lstinline{gdbserver} walk-through above.
+    \item The audit-queue rule stands: mainline code is comprehensively fuzzed by the distribution; the vendor additions (\lstinline{adsprpc}, \lstinline{kgsl}, trustlets) are where the unaudited parsing lives.
+    \item The source auditing module's attack surface analysis supplies the enumeration method; this module supplies the phone-specific reachability rules (DAC, SELinux label, namespace) that decide which of those surfaces an \lstinline{adb} shell can actually touch.
+    \item The fuzzing module's harness work is the natural next step: each surface listed in Part II is a candidate harness, and each of the drivers named is a candidate for a syzkaller-style descriptor.
+\end{enumerate}
+
+\section*{References}
+\begin{enumerate}
+	\item android\_questions.txt in this repo (source of parts I--II; keep in sync)
+	\item mwr infosecurity mmap exploitation whitepaper (linked above)
+	\item Google Project Zero: Binder (CVE-2019-2215) and Stagefright writeups
+	\item Android security bulletins and the AOSP source (android.googlesource.com)
+	\item The Linux kernel module and its references for LSM/DAC/MAC mechanics.
+	\item Android Open Source Project, ``Verified Boot'' and ``dm-verity'' documentation
+	\item F-Secure mmap exploitation whitepaper and the Linux auditing notes
+\end{enumerate}
+
+\end{document}

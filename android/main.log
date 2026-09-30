@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.141592653-2.6-1.40.29 (TeX Live 2026/Homebrew) (preloaded format=pdflatex 2026.3.4)  30 SEP 2026 10:39
+This is pdfTeX, Version 3.141592653-2.6-1.40.29 (TeX Live 2026/Homebrew) (preloaded format=pdflatex 2026.3.4)  30 SEP 2026 10:34
 entering extended mode
  restricted \write18 enabled.
  %&-line parsing enabled.
@@ -221,7 +221,7 @@ Package xcolor Info: Model `HSB' substituted by `hsb' on input line 1370.
 Package xcolor Info: Model `Gray' substituted by `gray' on input line 1371.
 Package xcolor Info: Model `wave' substituted by `hsb' on input line 1372.
 )
-LaTeX Font Info:    Trying to load font information for T1+ppl on input line 42
+LaTeX Font Info:    Trying to load font information for T1+ppl on input line 48
 .
 
 (/opt/homebrew/Cellar/texlive/20260301/share/texmf-dist/tex/latex/psnfss/t1ppl.
@@ -232,24 +232,24 @@ File: t1ppl.fd 2001/06/04 font definitions for T1/ppl.
 ackend-pdftex.def
 File: l3backend-pdftex.def 2025-10-09 L3 backend support: PDF output (pdfTeX)
 \l__color_backend_stack_int=\count298
-) (./main.aux)
+)
+No file main.aux.
 \openout1 = `main.aux'.
 
-LaTeX Font Info:    Checking defaults for OML/cmm/m/it on input line 42.
-LaTeX Font Info:    ... okay on input line 42.
-LaTeX Font Info:    Checking defaults for OMS/cmsy/m/n on input line 42.
-LaTeX Font Info:    ... okay on input line 42.
-LaTeX Font Info:    Checking defaults for OT1/cmr/m/n on input line 42.
-LaTeX Font Info:    ... okay on input line 42.
-LaTeX Font Info:    Checking defaults for T1/cmr/m/n on input line 42.
-LaTeX Font Info:    ... okay on input line 42.
-LaTeX Font Info:    Checking defaults for TS1/cmr/m/n on input line 42.
-LaTeX Font Info:    ... okay on input line 42.
-LaTeX Font Info:    Checking defaults for OMX/cmex/m/n on input line 42.
-LaTeX Font Info:    ... okay on input line 42.
-LaTeX Font Info:    Checking defaults for U/cmr/m/n on input line 42.
-LaTeX Font Info:    ... okay on input line 42.
-
+LaTeX Font Info:    Checking defaults for OML/cmm/m/it on input line 48.
+LaTeX Font Info:    ... okay on input line 48.
+LaTeX Font Info:    Checking defaults for OMS/cmsy/m/n on input line 48.
+LaTeX Font Info:    ... okay on input line 48.
+LaTeX Font Info:    Checking defaults for OT1/cmr/m/n on input line 48.
+LaTeX Font Info:    ... okay on input line 48.
+LaTeX Font Info:    Checking defaults for T1/cmr/m/n on input line 48.
+LaTeX Font Info:    ... okay on input line 48.
+LaTeX Font Info:    Checking defaults for TS1/cmr/m/n on input line 48.
+LaTeX Font Info:    ... okay on input line 48.
+LaTeX Font Info:    Checking defaults for OMX/cmex/m/n on input line 48.
+LaTeX Font Info:    ... okay on input line 48.
+LaTeX Font Info:    Checking defaults for U/cmr/m/n on input line 48.
+LaTeX Font Info:    ... okay on input line 48.
 *geometry* driver: auto-detecting
 *geometry* detected driver: pdftex
 *geometry* verbose mode - [ preamble ] result:
@@ -313,22 +313,37 @@ File: epstopdf-sys.cfg 2010/07/13 v1.3 Configuration of (r)epstopdf for TeX Liv
 e
 ))
 \c@lstlisting=\count305
+LaTeX Font Info:    Font shape `T1/cmtt/bx/n' in size <12> not available
+(Font)              Font shape `T1/cmtt/m/n' tried instead on input line 66.
+LaTeX Font Info:    Font shape `T1/cmtt/bx/n' in size <10.95> not available
+(Font)              Font shape `T1/cmtt/m/n' tried instead on input line 66.
 
-Overfull \hbox (4.67451pt too wide) in paragraph at lines 51--52
-\T1/ppl/m/n/12 them, and roughly 9% of the pro-grams that crashed did so on ev-
-ery in-put. Fuzzing
+Overfull \hbox (88.86748pt too wide) in paragraph at lines 70--71
+[][][][][][][][][][][][][][][][][][][][][][][][][][] 
  []
 
 
-Overfull \hbox (3.95534pt too wide) in paragraph at lines 51--52
-\T1/ppl/m/n/12 was born as: throw structured-ish ran-dom-ness at a parser and w
-atch for SIGSEGV.
+Overfull \hbox (2.35776pt too wide) in paragraph at lines 74--75
+[]\T1/ppl/m/n/12 Pathnames worth rec-og-niz-ing: [][][][][] (the main thread st
+ack, grown down),
  []
 
 
-Overfull \hbox (6.27122pt too wide) in paragraph at lines 54--55
-\T1/ppl/m/n/12 file with three booleans) or the in-ter-est-ing logic is be-hind
- crypto/compression
+Overfull \hbox (20.12296pt too wide) in paragraph at lines 74--75
+[][][][][] \T1/ppl/m/n/12 (the [][][]-managed re-gion), [][][][][]/[][][][][] (
+kernel-supplied pages mapped
+ []
+
+
+Overfull \hbox (3.9964pt too wide) in paragraph at lines 74--75
+\T1/ppl/m/n/12 into ev-ery pro-cess), [][][][][] (the fixed-address x86_64 com-
+pat-i-bil-ity page),
+ []
+
+
+Overfull \hbox (13.08714pt too wide) in paragraph at lines 74--75
+[][][][][] \T1/ppl/m/n/12 (in-stru-men-ta-tion), anony-mous ker-nel files such 
+as [][][][][]
  []
 
 [1
@@ -337,188 +352,265 @@ Overfull \hbox (6.27122pt too wide) in paragraph at lines 54--55
 /pdftex.map}{/opt/homebrew/Cellar/texlive/20260301/share/texmf-dist/fonts/enc/d
 vips/base/8r.enc}{/opt/homebrew/Cellar/texlive/20260301/share/texmf-dist/fonts/
 enc/dvips/cm-super/cm-super-t1.enc}]
-LaTeX Font Info:    Trying to load font information for OT1+ppl on input line 7
-1.
+Overfull \hbox (153.73756pt too wide) in paragraph at lines 75--76
+[]\T1/ppl/m/n/12 It is im-ple-mented as a se-quence ([][][]) file type. The [][
+][][][][][][][][][][]
+ []
+
+
+Overfull \hbox (51.02336pt too wide) in paragraph at lines 77--78
+\T1/ppl/m/n/12 dent, dirty and swap ac-count-ing, plus the ker-nel's page size)
+, [][][][][][][][]
+ []
+
+
+Overfull \hbox (133.2552pt too wide) in paragraph at lines 81--82
+[]\T1/ppl/m/n/12 Anonymous al-lo-ca-tions: [][][][][][][][][][][][][][][][][][]
+[][][][][]
+ []
+
+LaTeX Font Info:    Trying to load font information for OT1+ppl on input line 8
+4.
 
 (/opt/homebrew/Cellar/texlive/20260301/share/texmf-dist/tex/latex/psnfss/ot1ppl
 .fd
 File: ot1ppl.fd 2001/06/04 font definitions for OT1/ppl.
 )
 LaTeX Font Info:    Trying to load font information for OML+zplm on input line 
-71.
+84.
 
 (/opt/homebrew/Cellar/texlive/20260301/share/texmf-dist/tex/latex/psnfss/omlzpl
 m.fd
 File: omlzplm.fd 2002/09/08 Fontinst v1.914 font definitions for OML/zplm.
 )
 LaTeX Font Info:    Trying to load font information for OMS+zplm on input line 
-71.
+84.
 
 (/opt/homebrew/Cellar/texlive/20260301/share/texmf-dist/tex/latex/psnfss/omszpl
 m.fd
 File: omszplm.fd 2002/09/08 Fontinst v1.914 font definitions for OMS/zplm.
 )
 LaTeX Font Info:    Trying to load font information for OMX+zplm on input line 
-71.
+84.
 
 (/opt/homebrew/Cellar/texlive/20260301/share/texmf-dist/tex/latex/psnfss/omxzpl
 m.fd
 File: omxzplm.fd 2002/09/08 Fontinst v1.914 font definitions for OMX/zplm.
 )
 LaTeX Font Info:    Trying to load font information for OT1+zplm on input line 
-71.
+84.
 
 (/opt/homebrew/Cellar/texlive/20260301/share/texmf-dist/tex/latex/psnfss/ot1zpl
 m.fd
 File: ot1zplm.fd 2002/09/08 Fontinst v1.914 font definitions for OT1/zplm.
-) [2] [3]
-Overfull \hbox (5.63448pt too wide) in paragraph at lines 101--102
-[]\T1/ppl/m/n/12 Crashes: SIGSEGV/SIGBUS/SIGABRT/SIGILL/SIGFPE via a crash han-
-dler. Raw
+)
+Overfull \hbox (8.10124pt too wide) in paragraph at lines 84--85
+\T1/ppl/m/n/12 re-ceives a [][][][][][][] whose [][][], [][][], [][][], [][][]
+ []
+
+[2]
+Overfull \hbox (8.48848pt too wide) in paragraph at lines 92--93
+[]\T1/ppl/m/n/12 Races with [][][]/[][][]/[][][] (CVE-2016-5195, Dirty COW, is 
+the canon-
  []
 
 
-Overfull \hbox (8.30035pt too wide) in paragraph at lines 107--108
-[]\T1/ppl/m/n/12 UBSan (Un-de-fined-Be-hav-ior-San-i-tizer): signed over-flow, 
-bad shifts, mis-aligned
+Overfull \hbox (34.23106pt too wide) in paragraph at lines 94--95
+[]\T1/ppl/m/n/12 Reference: https://labs.f-secure.com/assets/BlogFiles/mwri-mma
+p-exploitation-
  []
 
 
-Overfull \hbox (1.55247pt too wide) in paragraph at lines 107--108
-\T1/ppl/m/n/12 point-ers, out-of-bounds ar-ray in-dex-ing ([][][][][][]); traps
- in-stead
+Overfull \hbox (19.97096pt too wide) in paragraph at lines 98--99
+[][][][] \T1/ppl/m/n/12 is a syscall (the en-try point [][][] is im-ple-mented 
+in [][][][][][][],
  []
 
 
-Overfull \hbox (27.22192pt too wide) in paragraph at lines 121--122
-\T1/ppl/m/n/12 overflow / UAF / double-free / stack); group by type $\OT1/zplm/
-m/n/12 +$ \T1/ppl/m/n/12 stack. Tools: [][][][][],
+Overfull \hbox (21.56029pt too wide) in paragraph at lines 98--99
+\T1/ppl/m/n/12 lets one user-space pro-cess trace and de-bug an-other. En-force
+-ment of DAC/MAC
+ []
+
+
+Overfull \hbox (13.60522pt too wide) in paragraph at lines 98--99
+[][][][] \T1/ppl/m/n/12 and MAC through the LSM [][][]
+ []
+
+
+Overfull \hbox (13.6993pt too wide) in paragraph at lines 99--100
+\T1/ppl/m/n/12 worth know-ing: [][][]/[][][], [][][]/[][][]
+ []
+
+
+Overfull \hbox (9.60886pt too wide) in paragraph at lines 99--100
+\T1/ppl/m/n/12 (at-tach with-out stop-ping, stop on de-mand), [][][]/[][][],
+ []
+
+
+Overfull \hbox (141.89749pt too wide) in paragraph at lines 99--100
+[][][]\T1/ppl/m/n/12 /[][][], [][][]/[][][], [][][]/[][][]
+ []
+
+
+Overfull \hbox (60.14517pt too wide) in paragraph at lines 99--100
+\T1/ppl/m/n/12 (portable, per-architecture reg-is-ter sets), [][][], [][][], []
+[][]
+ []
+
+
+Overfull \hbox (25.53781pt too wide) in paragraph at lines 99--100
+\T1/ppl/m/n/12 and [][][] (which en-ables [][][], [][][],
+ []
+
+[3]
+Overfull \hbox (8.93369pt too wide) in paragraph at lines 118--119
+[][][][][][][][][]\T1/ppl/m/n/12 , e.g. [][][][][][][][][][][][][]. Bionic (An-
+droid's
+ []
+
+
+Overfull \hbox (19.52423pt too wide) in paragraph at lines 120--121
+[]\T1/ppl/m/n/12 File-system ob-jects: query with [][][][][][], [][][], or di-r
+ectly with the [][][][][]
+ []
+
+
+Overfull \hbox (86.5669pt too wide) in paragraph at lines 121--122
+\T1/ppl/m/n/12 and the au-dit log: [][][][][][][][][] or [][][][][][][][][][][]
+[]. [][][]/[][][][][]
  []
 
 [4]
-Overfull \hbox (12.92041pt too wide) in paragraph at lines 123--124
-[]\T1/ppl/b/n/12 Reproduce de-ter-min-is-ti-cally\T1/ppl/m/n/12 : plain ASLR/pi
-d/time/rng source con-trol, same
+Overfull \hbox (0.30951pt too wide) in paragraph at lines 145--146
+\T1/ppl/m/n/12 driver's own at-tack sur-face (CVE-2019-2215 was a Binder use-af
+ter-free). 
  []
 
 
-Overfull \hbox (25.51923pt too wide) in paragraph at lines 130--131
-[]\T1/ppl/m/n/12 Controlled-length, controlled-content write in-side a large he
-ap re-gion: scheduler-
- []
-
-
-Overfull \hbox (2.94713pt too wide) in paragraph at lines 132--133
-[]\T1/ppl/m/n/12 Uncontrolled-length over-flow (long mem-cpy): triv-ially DoS, 
-ex-ploitable only
- []
-
-
-Overfull \hbox (4.54333pt too wide) in paragraph at lines 133--134
-[]\T1/ppl/m/n/12 Hang/overtime/slow-alloc: usu-ally quality-of-life is-sues onl
-y, un-less it mod-
- []
-
-
-Overfull \hbox (4.1096pt too wide) in paragraph at lines 136--137
-\T1/ppl/m/n/12 deduped stack but with dis-tinct min-i-miz-ing paths can still b
-e one bug; two crashes
+Overfull \hbox (26.75548pt too wide) in paragraph at lines 147--148
+[]\T1/ppl/m/n/12 ION al-lo-ca-tors (his-tor-i-cally, a ven-dor mem-ory al-lo-ca
+-tor ex-posed to userspace;
  []
 
 [5]
-Overfull \hbox (22.09027pt too wide) in paragraph at lines 152--153
-\T1/ppl/m/n/12 stan-dard met-ric (AFL edges, source-based [][][][][][][][][][][
-][]). 
+Overfull \hbox (9.45316pt too wide) in paragraph at lines 159--160
+[]\T1/ppl/m/n/12 Root the phone if you need to de-bug a sys-tem ap-pli-ca-tion 
+([][][], [][][],
  []
 
 
-Overfull \hbox (98.04248pt too wide) in paragraph at lines 164--165
-[]\T1/ppl/m/n/12 libFuzzer: same feed-back idea, in-process, link-ing the har-n
-ess di-rectly, with [][][].
- []
-
-
-Overfull \hbox (30.20868pt too wide) in paragraph at lines 164--165
-\T1/ppl/m/n/12 Knobs worth know-ing: [][][][], [][][][], [][][][], [][][][], []
-[][][], [][][][]/[][][][],
- []
-
-
-Overfull \hbox (18.53947pt too wide) in paragraph at lines 164--165
-[][][][][]\T1/ppl/m/n/12 , [][][][][], and the [][][]/[][][]
- []
-
-[6]
-Overfull \hbox (106.70769pt too wide) in paragraph at lines 180--181
-\T1/ppl/m/n/12 dard mit-i-ga-tions: [][][][][][] to dis-able ASLR (Linux), [][]
-[][][][][][]
- []
-
-[7]
-Overfull \hbox (17.8247pt too wide) in paragraph at lines 183--184
-\T1/ppl/m/n/12 node scheme, and lib-Fuzzer clus-ters): cov-er-age merges at syn
-c in-ter-vals. [][][][][]
- []
-
-
-Overfull \hbox (17.34625pt too wide) in paragraph at lines 203--204
-\T1/ppl/m/n/12 fork server), lib-Fuzzer (in-process, LLVM), hong-g-fuzz (perf_e
-vent hardware-counter
- []
-
-[8]
 (/opt/homebrew/Cellar/texlive/20260301/share/texmf-dist/tex/latex/listings/lstl
 ang1.sty
 File: lstlang1.sty 2025/11/14 1.11b listings language file
 )
-(/opt/homebrew/Cellar/texlive/20260301/share/texmf-dist/tex/latex/listings/lstm
-isc.sty
-File: lstmisc.sty 2025/11/14 1.11b (Carsten Heinz)
+(/opt/homebrew/Cellar/texlive/20260301/share/texmf-dist/tex/latex/listings/lstl
+ang1.sty
+File: lstlang1.sty 2025/11/14 1.11b listings language file
 )
-Overfull \hbox (29.16974pt too wide) in paragraph at lines 219--220
+Overfull \hbox (9.95045pt too wide) in paragraph at lines 169--170
+[]\T1/ppl/m/n/12 From the host, con-nect with architecture-appropriate [][][] (
+pre-fer [][][][][]
+ []
+
+
+Overfull \hbox (54.91698pt too wide) in paragraph at lines 182--183
 [][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][
-][][][][][][][][][][][][][][][][][][][][][][][][][][][] 
+][][] 
  []
 
-[9]
-Overfull \hbox (5.09482pt too wide) in paragraph at lines 253--254
-\T1/ppl/m/n/12 Fuzzing gives you a small num-ber of high-quality, hard-to-disco
-ver memory-corruption
+
+Overfull \hbox (31.25089pt too wide) in paragraph at lines 188--189
+[]\T1/ppl/m/n/12 For an ap-pli-ca-tion rather than a dae-mon, a de-bug-gable bu
+ild and [][][][][][][][][]
  []
 
-[10]
-Overfull \hbox (37.98598pt too wide) in paragraph at lines 268--269
-[]\T1/ppl/m/n/12 FuzzBench and Magma: github.com/google/fuzzbench, github.com/H
-exHive/magma 
+
+Overfull \hbox (121.4625pt too wide) in paragraph at lines 193--194
+\T1/ppl/m/n/12 against the host [][][]/[][][][][]. A mis-match shows up as [][]
+[][][][][][][][][][][][][][][],
  []
 
-[11] (./main.aux)
+[6]
+Overfull \hbox (65.76564pt too wide) in paragraph at lines 201--202
+[]\T1/ppl/m/n/12 OEM-unlock the boot-loader us-ing the De-vel-oper mode menu ([
+][][][][][][],
+ []
+
+
+Overfull \hbox (15.97752pt too wide) in paragraph at lines 204--205
+\T1/ppl/m/n/12 boot ramdisk rather than the sys-tem par-ti-tion, which is what 
+sur-vives [][][][][]
+ []
+
+
+Overfull \hbox (0.54807pt too wide) in paragraph at lines 209--210
+[]\T1/ppl/m/n/12 Bootloader un-lock blocked by a car-rier lock (Ver-i-zon, AT&T
+), or by the OEM-
+ []
+
+[7]
+Overfull \hbox (11.81175pt too wide) in paragraph at lines 220--221
+[]\T1/ppl/m/n/12 Kernel drivers with [][][][] en-tries --- write and ioctl han-
+dlers reg-is-tered through
+ []
+
+
+Overfull \hbox (17.81822pt too wide) in paragraph at lines 222--223
+[][][][]\T1/ppl/m/n/12 /[][][] pro-cess-ing of ex-e-cuta-bles --- a parser of a
+ttacker-authored
+ []
+
+
+Overfull \hbox (9.30707pt too wide) in paragraph at lines 233--234
+\T1/ppl/m/n/12 USB key-board/mouse (a ma-li-cious pe-riph-eral can in-ject in-p
+ut), or as Ethernet-
+ []
+
+[8]
+Overfull \hbox (49.81636pt too wide) in paragraph at lines 243--244
+\T1/ppl/m/n/12 sig-nal han-dlers, which in-voke [][][][][][][][] or [][][][][][
+][][].
+ []
+
+
+Overfull \hbox (0.1704pt too wide) in paragraph at lines 244--245
+[]\T1/ppl/m/n/12 The tomb-stone is writ-ten un-der [][][][][][][][] and con-tai
+ns
+ []
+
+
+Overfull \hbox (5.06952pt too wide) in paragraph at lines 263--264
+\T1/ppl/m/n/12 method; this mod-ule sup-plies the phone-specific reach-a-bil-it
+y rules (DAC, SELinux
+ []
+
+[9] [10] (./main.aux)
  ***********
 LaTeX2e <2025-11-01>
 L3 programming layer <2026-01-19>
  ***********
  ) 
 Here is how much of TeX's memory you used:
- 5385 strings out of 467525
- 80806 string characters out of 5408440
- 714957 words of memory out of 5000000
- 34234 multiletter control sequences out of 15000+600000
- 650640 words of font info for 82 fonts, out of 8000000 for 9000
+ 5446 strings out of 467525
+ 81240 string characters out of 5408440
+ 703658 words of memory out of 5000000
+ 34299 multiletter control sequences out of 15000+600000
+ 650011 words of font info for 80 fonts, out of 8000000 for 9000
  1141 hyphenation exceptions out of 8191
- 72i,12n,79p,584b,1396s stack positions out of 10000i,1000n,20000p,200000b,200000s
+ 72i,12n,79p,925b,1331s stack positions out of 10000i,1000n,20000p,200000b,200000s
 </opt/homebrew/Cellar/texlive/20260301/share/texmf-dist/fonts/type1/public/am
 sfonts/cm/cmr10.pfb></opt/homebrew/Cellar/texlive/20260301/share/texmf-dist/fon
 ts/type1/public/amsfonts/cm/cmsy10.pfb></opt/homebrew/Cellar/texlive/20260301/s
 hare/texmf-dist/fonts/type1/public/cm-super/sftt1095.pfb></opt/homebrew/Cellar/
-texlive/20260301/share/texmf-dist/fonts/type1/public/cm-super/sftt1200.pfb></op
-t/homebrew/Cellar/texlive/20260301/share/texmf-dist/fonts/type1/urw/palatino/up
-lb8a.pfb></opt/homebrew/Cellar/texlive/20260301/share/texmf-dist/fonts/type1/ur
-w/palatino/uplr8a.pfb></opt/homebrew/Cellar/texlive/20260301/share/texmf-dist/f
-onts/type1/urw/palatino/uplri8a.pfb>
-Output written on main.pdf (11 pages, 162531 bytes).
+texlive/20260301/share/texmf-dist/fonts/type1/urw/palatino/uplb8a.pfb></opt/hom
+ebrew/Cellar/texlive/20260301/share/texmf-dist/fonts/type1/urw/palatino/uplr8a.
+pfb></opt/homebrew/Cellar/texlive/20260301/share/texmf-dist/fonts/type1/urw/pal
+atino/uplri8a.pfb>
+Output written on main.pdf (10 pages, 144979 bytes).
 PDF statistics:
- 77 PDF objects out of 1000 (max. 8388607)
- 49 compressed objects within 1 object stream
+ 69 PDF objects out of 1000 (max. 8388607)
+ 44 compressed objects within 1 object stream
  0 named destinations out of 1000 (max. 500000)
  1 words of extra memory for PDF output out of 10000 (max. 10000000)
 

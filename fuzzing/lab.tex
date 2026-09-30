@@ -1,0 +1,129 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%        Author: Bernard Lampe
+%   Fuzzing lab material
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% import template
+\documentclass[12pt]{Training}
+
+% import packages
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{mathpazo}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{listings}
+\usepackage{enumerate}
+\usepackage{xcolor}
+
+%----------------------------------------------------------------------------------------
+
+% set document info
+\title{Fuzzing Lab Material}
+\author{Dr. Bernard Lampe}
+\class{Introduction to Vulnerability Research Lab}
+\date{October 22nd, 2019}
+
+%----------------------------------------------------------------------------------------
+
+% set code listing style
+\lstset{
+    basicstyle=\ttfamily\small,
+    numbers=left,
+    tabsize=2,
+    keywordstyle=\color{blue}\ttfamily,
+    stringstyle=\color{red}\ttfamily,
+    commentstyle=\color{green}\ttfamily,
+    morecomment=[l][\color{magenta}]{\#}
+}
+
+\begin{document}
+
+\maketitle
+
+%----------------------------------------------------------------------------------------
+
+\section*{Setup}
+\begin{enumerate}
+    \item The lab target ships in \lstinline{fuzzing/targets/lab_target.c}: a deliberately vulnerable checksum-gated parser with the wire format
+    $[$magic ``CKS''$]$ $[$2-byte payload\_len$]$ $[$2-byte checksum = sum of payload bytes mod $2^{16}$$]$ $[$payload$]$.
+    The three validation gates are exactly the ``staircase of friction'' from the Mutation Fuzzing lecture: dumb mutation rarely satisfies all three.
+    \item Build the ASan-instrumented binary and the standalone driver (both verified on the reference host):
+    \begin{lstlisting}[language=bash]
+clang -g -O1 -fsanitize=fuzzer-no-link,address \\
+      -c lab_target.c -o lab_target.o
+clang -g -O1 -fsanitize=address \\
+      lab_target.o harness.c main.c -o lab_target_asan
+    \end{lstlisting}
+    \item If your clang ships the libFuzzer runtime (\lstinline{-fsanitize=fuzzer} linking works), also build the true fuzzer:
+    \begin{lstlisting}[language=bash]
+clang -g -O1 -fsanitize=fuzzer,address lab_target.o harness.c -o lab_fuzzer
+    \end{lstlisting}
+\end{enumerate}
+
+\section*{Baseline: Learn the Target by Hand}
+\begin{enumerate}
+    \item Run the provided seeds through the ASan binary and record exit statuses. Verified reference behavior (exit 0 = accepted, 2 = validation-rejected):
+        \begin{center}
+        \footnotesize
+        \begin{tabular}{@{}lll@{}}
+        \toprule
+        Seed & Content & Exit \\
+        \midrule
+        seed\_ok & valid CKS, 30-byte payload, best sum & 0 \\
+        seed\_badmagic & magic byte 0 corrupted & 2 (gate 1) \\
+        seed\_badsum & checksum field = 0xBEEF, wrong for payload & 2 (gate 3) \\
+        seed\_shift & type byte 0x80 (negative as \lstinline{char}) & 2 $^{*}$ \\
+        seed\_over & payload\_len = 300 into 64-byte stack buf & crash: ASan \\
+        \bottomrule
+        \end{tabular}
+        \end{center}
+    \item $^{*}$\,seed\_shift exits 2 on the reference build because the bug in the type gate (\lstinline{char} vs unsigned comparison) compiles to a benign path under this optimizer --- a live example of the lecture's point that sanitizer/tool visibility depends on the build. How would you make that harness path *fail loudly* instead of silently? Try \lstinline{-O0} and \lstinline{-fsanitize=undefined}.
+    \item Which gate does \lstinline{seed_badmagic} fail? Why does \lstinline{seed_len0} (empty payload) not crash?
+\end{enumerate}
+
+\section*{Exercise 1 --- Dumb Mutation (black box)}
+\begin{enumerate}
+    \item Using only \lstinline{seed_ok} and any bit-flip strategy you like (write 20 lines of Python, or use radamsa if installed), attempt to produce crashes.
+    \item Track two numbers over your mutations: (a) how many produced a \emph{checksum that passed gate 3}, (b) how many crashed.
+    \item Expected result (and the lesson): crashes require passing gates 1--3 simultaneously; random bit flips essentially never satisfy the checksum while also inflating payload\_len. Quantify it --- how many trials per crash?
+\end{enumerate}
+
+\section*{Exercise 2 --- Coverage-Guided Feedback (if lab\_fuzzer built)}
+\begin{enumerate}
+    \item Make a corpus directory containing only \lstinline{seed_ok}; run:
+    \begin{lstlisting}[language=bash]
+./lab_fuzzer -max_len=4096 corpus/
+    \end{lstlisting}
+    \item Watch coverage growth. Compare wall-time-to-first-crash against your Exercise 1 count. Explain in one sentence why feedback closes the checksum stair faster than mutation.
+    \item Add \lstinline{seed_shift} to the corpus and rerun: does the fuzzer find the sign-comparison bug path that the ASan build silenced? What does this tell you about seed curation?
+\end{enumerate}
+
+\section*{Exercise 3 --- Crash Triage (the lecture's pipeline, in practice)}
+\begin{enumerate}
+    \item Take the crashing input(s) found in Exercise 1/2 and run the full \textbf{Crash Triage and Exploitability} pipeline from the lecture:
+    \begin{enumerate}
+        \item Dedupe: if you have multiple crashing inputs, group by stack hash. Do they all show \lstinline{lab_parse } at frame \#0, \lstinline{lab_target.c:46}?
+        \item Minimize: shrink \lstinline{seed_over}-style inputs to the smallest payload that still crashes. What is the minimum payload\_len that trips ASan's redzone, and why exactly 65? (Allocation is 64; the first OOB byte lands in the redzone.)
+        \item Reproduce deterministically: run the minimized input three times; confirm identical stack each time.
+        \item Root cause: express the bug in two sentences naming the missing check and the wrong buffer size.
+        \item Exploitability: price the primitive --- attacker controls length and content of the overflow; the buffer is a 64-byte stack local adjacent to (what does \lstinline{otool -tv} show is saved above it?). Apply the lecture's mitigation map: with ASan this input dies at the first OOB byte; without ASan, where does control-flow-relevant overflow begin?
+    \end{enumerate}
+    \item Deliverable: one-paragraph report per the source auditing lecture's \textbf{From Bug to Report} format, with your minimized reproducer attached.
+\end{enumerate}
+
+\section*{Exercise 4 --- Structure-Aware Generative Fuzzing (stretch)}
+\begin{enumerate}
+    \item Write a 30-line generator (Python direct construction works) emitting CKS frames with (a) correct checksums and payload lengths sweeping 1..4096, (b) checksums off-by-one, (c) claimed lengths lying 1--8 bytes high versus actual availability.
+    \item Which of the three generator modes reaches the memcpy? Which discovers the gate-2 boundary (\lstinline{payload_len > size - 8}) failure when the container is also fuzzed?
+    \item Explain, citing the lecture's Generative Fuzzing weaknesses, why a too-faithful generator finds nothing: the model and the parser agree exactly, so no implementation assumption is violated.
+\end{enumerate}
+
+\section*{Deliverables}
+\begin{enumerate}
+    \item Mutation-vs-feedback wall-time comparison table (Exercises 1 vs 2).
+    \item Minimized crash reproducer and one-paragraph exploitability-priced report (Exercise 3).
+    \item Generator source plus reach analysis (Exercise 4).
+\end{enumerate}
+
+\end{document}

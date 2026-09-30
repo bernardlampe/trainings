@@ -1,0 +1,109 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%        Author: Bernard Lampe
+%   Binary reverse engineering lab material
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% import template
+\documentclass[12pt]{Training}
+
+% import packages
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{mathpazo}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{listings}
+\usepackage{enumerate}
+\usepackage{xcolor}
+
+%----------------------------------------------------------------------------------------
+
+% set document info
+\title{Binary Reverse Engineering Lab Material}
+\author{Dr. Bernard Lampe}
+\class{Introduction to Vulnerability Research Lab}
+\date{October 31st, 2019}
+
+%----------------------------------------------------------------------------------------
+
+% set code listing style
+\lstset{
+    basicstyle=\ttfamily\small,
+    numbers=left,
+    tabsize=2,
+    keywordstyle=\color{blue}\ttfamily,
+    stringstyle=\color{red}\ttfamily,
+    commentstyle=\color{green}\ttfamily,
+    morecomment=[l][\color{magenta}]{\#}
+}
+
+\begin{document}
+
+\maketitle
+
+%----------------------------------------------------------------------------------------
+
+\section*{Setup}
+\begin{enumerate}
+    \item The lab target is \lstinline{binary_re/targets/checks.c}, built without source access for the exercise (compile it yourself once, then work only from the binary):
+    \begin{lstlisting}[language=bash]
+clang -g checks.c -o checks        # instructor build; hide this source
+    \end{lstlisting}
+    \item It accepts a blob file: $[$magic 4 bytes$]$ $[$1-byte version/flags$]$ $[$1-byte key length$]$ $[$key bytes$]$ and prints \lstinline{ACCESS GRANTED} only on full validation.
+    \item Reference blob behaviors (all verified on the reference build):
+        \begin{center}
+        \footnotesize
+        \begin{tabular}{@{}lll@{}}
+        \toprule
+        Blob & Content & Result \\
+        \midrule
+        valid\_blob.bin & magic, ver 2, 6-key blob & ACCESS GRANTED, exit 0 \\
+        antidebug\_blob.bin & flags nibble = 1 & ``debugger detected, exiting'', exit 1 \\
+        badmagic\_blob.bin & magic = ``XXX!'' & rejected, exit 1 \\
+        \bottomrule
+        \end{tabular}
+        \end{center}
+    \item Tools: any disassembler (objdump at minimum; IDA/Binja/Ghidra/r2 preferred), a debugger (lldb on this host), Python for the transform work.
+\end{enumerate}
+
+\section*{Exercise 1 --- Static Triage}
+\begin{enumerate}
+    \item Run \lstinline{file checks} and \lstinline{otool -L checks}. What libc-level imports hint at the program's behavior before you read a single instruction?
+    \item \lstinline{strings checks}: which strings survive, and what do the printed messages tell you about the control flow of \lstinline{main}?
+    \item Disassemble only \lstinline{check} (via \lstinline{nm} tracing). Identify: how the version nibble is checked, how the flags nibble is used, and where \lstinline{memcmp} is called.
+\end{enumerate}
+
+\section*{Exercise 2 --- Dynamic Discovery of the Tripwire}
+\begin{enumerate}
+    \item Run \lstinline{./checks antidebug_blob.bin} and observe the ``debugger detected'' message without any debugger attached: the tripwire is value-triggered, not debugger-triggered. Verify in the disassembly which nibble drives it.
+    \item Then trigger it under \lstinline{lldb}: break on \lstinline{printf} and inspect the flag byte on the stack. Confirm that clearing bit 0 of byte [4] bypasses it. Patch \lstinline{antidebug_blob.bin} into a clean blob and verify accepted-entry-set now passes this gate.
+\end{enumerate}
+
+\section*{Exercise 3 --- Decode the Key Transform}
+\begin{enumerate}
+    \item In the disassembly of the key loop, identify the three primitive operations applied per key byte (subtraction, rotation, XOR --- which operand is the round-derived constant?).
+    \item Under lldb, break at the loop and record the key byte, the round number, and the decoded value for the first 3 rounds. Confirm the inversion:
+        \begin{enumerate}
+            \item Decoded bytes 0--2 must equal \lstinline{VR!}.
+            \item The decoded key must sum to 0x1E1 (any key length the header allows).
+        \end{enumerate}
+    \item In Python, write the inverse transform and produce a key blob for klen = 6 (one exists: \lstinline{valid_blob.bin}). Confirm \lstinline{./checks valid_blob.bin} prints ACCESS GRANTED.
+    \item Produce a second blob with a different valid key length (klen $\geq$ 7) to prove the sum invariant is length-generic, not patched.
+\end{enumerate}
+
+\section*{Exercise 4 --- Written Audit Report}
+\begin{enumerate}
+    \item Write the check function's spec as you recovered it: gate list, byte offsets, flags semantics, the per-byte transform, and the acceptance invariants.
+    \item Explain the anti-reversing options the author had available (per the lecture's Anti-Reversing section): which class does the flags-nibble tripwire belong to, and how robust was it?
+    \item Price the exercise in reversing-session terms (\textbf{Approach} section): what was the triage, the surface map, the automation done, and the dynamic confirmation? Which step gave you the most information per minute?
+\end{enumerate}
+
+\section*{Deliverables}
+\begin{enumerate}
+    \item Annotated disassembly of \lstinline{check} (gate list labeled by hand).
+    \item Your bypassed/patched \lstinline{antidebug_blob.bin} and confirmation run.
+    \item Python inversion script and two accepted key blobs.
+    \item The Exercise 4 written spec.
+\end{enumerate}
+
+\end{document}
