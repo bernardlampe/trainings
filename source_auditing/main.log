@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.141592653-2.6-1.40.26 (TeX Live 2024) (preloaded format=pdflatex 2024.10.17)  30 SEP 2026 20:12
+This is pdfTeX, Version 3.141592653-2.6-1.40.26 (TeX Live 2024) (preloaded format=pdflatex 2024.10.17)  30 SEP 2026 20:50
 entering extended mode
  restricted \write18 enabled.
  %&-line parsing enabled.
@@ -268,13 +268,8 @@ File: epstopdf-sys.cfg 2010/07/13 v1.3 Configuration of (r)epstopdf for TeX Liv
 e
 ))
 \c@lstlisting=\count284
-LaTeX Font Info:    Trying to load font information for T1+cmtt on input line 5
-5.
 
-(/usr/local/texlive/2024/texmf-dist/tex/latex/base/t1cmtt.fd
-File: t1cmtt.fd 2023/04/13 v2.5m Standard LaTeX font definitions
-)
-Overfull \hbox (4.6517pt too wide) in paragraph at lines 74--75
+Overfull \hbox (4.6517pt too wide) in paragraph at lines 60--61
 []\T1/ppl/m/n/12 Understand the ar-chi-tec-ture in which your tar-get will ex-e
 -cute (ARM, ARM64,
  []
@@ -282,15 +277,14 @@ Overfull \hbox (4.6517pt too wide) in paragraph at lines 74--75
 [1
 
 {/usr/local/texlive/2024/texmf-var/fonts/map/pdftex/updmap/pdftex.map}{/usr/loc
-al/texlive/2024/texmf-dist/fonts/enc/dvips/base/8r.enc}{/usr/local/texlive/2024
-/texmf-dist/fonts/enc/dvips/cm-super/cm-super-t1.enc}] [2]
-Overfull \hbox (2.92404pt too wide) in paragraph at lines 119--120
+al/texlive/2024/texmf-dist/fonts/enc/dvips/base/8r.enc}]
+Overfull \hbox (2.92404pt too wide) in paragraph at lines 105--106
 []\T1/ppl/m/n/12 Source au-dit-ing can find non-memory-corruption bugs (non-cra
 shing) which
  []
 
-[3]
-Overfull \hbox (3.40407pt too wide) in paragraph at lines 157--158
+[2] [3]
+Overfull \hbox (3.40407pt too wide) in paragraph at lines 143--144
 []\T1/ppl/b/n/12 Controlled-content write\T1/ppl/m/n/12 : the at-tacker con-tro
 ls what is writ-ten but not where
  []
@@ -301,60 +295,67 @@ File: lstlang1.sty 2024/02/21 1.10 listings language file
 (/usr/local/texlive/2024/texmf-dist/tex/latex/listings/lstmisc.sty
 File: lstmisc.sty 2024/02/21 1.10 (Carsten Heinz)
 )
+LaTeX Font Info:    Trying to load font information for T1+cmtt on input line 1
+69.
+
+(/usr/local/texlive/2024/texmf-dist/tex/latex/base/t1cmtt.fd
+File: t1cmtt.fd 2023/04/13 v2.5m Standard LaTeX font definitions
+)
 LaTeX Font Info:    Trying to load font information for OT1+ppl on input line 1
-93.
+79.
 
 (/usr/local/texlive/2024/texmf-dist/tex/latex/psnfss/ot1ppl.fd
 File: ot1ppl.fd 2001/06/04 font definitions for OT1/ppl.
 )
 LaTeX Font Info:    Trying to load font information for OML+zplm on input line 
-193.
+179.
 
 (/usr/local/texlive/2024/texmf-dist/tex/latex/psnfss/omlzplm.fd
 File: omlzplm.fd 2002/09/08 Fontinst v1.914 font definitions for OML/zplm.
 )
 LaTeX Font Info:    Trying to load font information for OMS+zplm on input line 
-193.
+179.
 
 (/usr/local/texlive/2024/texmf-dist/tex/latex/psnfss/omszplm.fd
 File: omszplm.fd 2002/09/08 Fontinst v1.914 font definitions for OMS/zplm.
 )
 LaTeX Font Info:    Trying to load font information for OMX+zplm on input line 
-193.
+179.
 
 (/usr/local/texlive/2024/texmf-dist/tex/latex/psnfss/omxzplm.fd
 File: omxzplm.fd 2002/09/08 Fontinst v1.914 font definitions for OMX/zplm.
 )
 LaTeX Font Info:    Trying to load font information for OT1+zplm on input line 
-193.
+179.
 
 (/usr/local/texlive/2024/texmf-dist/tex/latex/psnfss/ot1zplm.fd
 File: ot1zplm.fd 2002/09/08 Fontinst v1.914 font definitions for OT1/zplm.
 )
-Overfull \hbox (2.72957pt too wide) in paragraph at lines 207--209
+Overfull \hbox (2.72957pt too wide) in paragraph at lines 193--195
 []\T1/ppl/m/n/12 Ideal heap vul-ner-a-bil-i-ties have sev-eral qual-i-ties, of 
 which a sub-set may be present. 
  []
 
-[5] [6] [7] [8] [9]
+[5{/usr/local/texlive/2024/texmf-dist/fonts/enc/dvips/cm-super/cm-super-t1.enc}
+] [6] [7] [8] [9]
 Overfull \vbox (35.97916pt too high) has occurred while \output is active []
 
 
 [10] [11] [12]
-Overfull \hbox (24.89473pt too wide) in paragraph at lines 564--565
+Overfull \hbox (24.89473pt too wide) in paragraph at lines 550--551
 []\T1/ppl/m/n/12 The most in-fa-mous in-for-ma-tion dis-clo-sure is Heart-Bleed
  (CVE-2014-0160) in OpenSSL
  []
 
 [13]
-Overfull \hbox (15.58954pt too wide) in paragraph at lines 602--603
+Overfull \hbox (15.58954pt too wide) in paragraph at lines 588--589
 [][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][
 ][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][]
 [][][][][][] 
  []
 
 
-Overfull \hbox (29.16974pt too wide) in paragraph at lines 604--605
+Overfull \hbox (29.16974pt too wide) in paragraph at lines 590--591
 [][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][
 ][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][] 
  []
@@ -364,236 +365,236 @@ Overfull \vbox (49.57916pt too high) has occurred while \output is active []
 
 
 [17] [18]
-Overfull \hbox (2.00934pt too wide) in paragraph at lines 808--809
+Overfull \hbox (2.00934pt too wide) in paragraph at lines 794--795
 [][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][
 ][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][]
 [][] 
  []
 
 
-Overfull \hbox (69.91034pt too wide) in paragraph at lines 819--820
+Overfull \hbox (69.91034pt too wide) in paragraph at lines 805--806
 [][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][
 ][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][]
 [][][][][][][][][][][][][][] 
  []
 
 
-Overfull \hbox (0.46066pt too wide) in paragraph at lines 832--833
+Overfull \hbox (0.46066pt too wide) in paragraph at lines 818--819
 [][][]\T1/ppl/m/n/12 , a [][][] from a header field) that is nar-rowed when pas
 sed to in-ter-nal helpers
  []
 
 
-Overfull \hbox (2.7416pt too wide) in paragraph at lines 833--834
+Overfull \hbox (2.7416pt too wide) in paragraph at lines 819--820
 []\T1/ppl/m/n/12 Audit trick: find ev-ery nar-row-ing cast/-con-ver-sion be-twe
 en an attacker-controlled
  []
 
 
-Overfull \hbox (15.58954pt too wide) in paragraph at lines 852--853
+Overfull \hbox (15.58954pt too wide) in paragraph at lines 838--839
 [][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][
 ][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][]
 [][][][][][][][][] 
  []
 
 [19]
-Overfull \hbox (22.37964pt too wide) in paragraph at lines 884--885
+Overfull \hbox (22.37964pt too wide) in paragraph at lines 870--871
 [][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][
 ][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][]
 [][][][][][] 
  []
 
 
-Overfull \hbox (49.54004pt too wide) in paragraph at lines 902--903
+Overfull \hbox (49.54004pt too wide) in paragraph at lines 888--889
 [][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][
 ][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][]
 [][][][][][][][][][][][][][][] 
  []
 
 [20] [21]
-Overfull \hbox (23.34555pt too wide) in paragraph at lines 916--917
+Overfull \hbox (23.34555pt too wide) in paragraph at lines 902--903
 []\T1/ppl/m/n/12 Kernel-adjacent vari-ant: data struc-tures hold-ing a bor-rowe
 d ref-er-ence ([][][][][][][])
  []
 
 
-Overfull \hbox (8.79944pt too wide) in paragraph at lines 929--930
+Overfull \hbox (8.79944pt too wide) in paragraph at lines 915--916
 [][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][
 ][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][] 
  []
 
 
-Overfull \hbox (22.37964pt too wide) in paragraph at lines 968--969
+Overfull \hbox (22.37964pt too wide) in paragraph at lines 954--955
 [][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][
 ][][][][][][][][][][][][][][] 
  []
 
 [22]
-Overfull \hbox (8.79944pt too wide) in paragraph at lines 985--986
+Overfull \hbox (8.79944pt too wide) in paragraph at lines 971--972
 [][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][
 ][][][][][][][][][][][][][][][][][][] 
  []
 
 [23]
-Underfull \hbox (badness 7595) in paragraph at lines 1015--1015
+Underfull \hbox (badness 7595) in paragraph at lines 1001--1001
 []\T1/ppl/m/n/10 fixed-size lo-cal buffer, length
  []
 
 
-Underfull \hbox (badness 2818) in paragraph at lines 1015--1016
+Underfull \hbox (badness 2818) in paragraph at lines 1001--1002
 []\T1/ppl/m/n/10 canary/ASLR by-pass, a control-flow
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 1018--1018
+Underfull \hbox (badness 10000) in paragraph at lines 1004--1004
 []\T1/ppl/m/n/10 OOB read-
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 1019--1019
+Underfull \hbox (badness 10000) in paragraph at lines 1005--1005
 []\T1/ppl/m/n/10 attacker-influenced pointer
  []
 
 
-Underfull \hbox (badness 2020) in paragraph at lines 1020--1021
+Underfull \hbox (badness 2020) in paragraph at lines 1006--1007
 []\T1/ppl/m/n/10 allocator's du-pli-cate check by-passed,
  []
 
 
-Underfull \hbox (badness 3792) in paragraph at lines 1021--1022
+Underfull \hbox (badness 3792) in paragraph at lines 1007--1008
 []\T1/ppl/m/n/10 same-size re-allocation with at-tacker
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 1022--1022
+Underfull \hbox (badness 10000) in paragraph at lines 1008--1008
 []\T1/ppl/m/n/10 Integer over-
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 1026--1026
+Underfull \hbox (badness 10000) in paragraph at lines 1012--1012
 []\T1/ppl/m/n/10 Command in-
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 1026--1026
+Underfull \hbox (badness 10000) in paragraph at lines 1012--1012
 []\T1/ppl/m/n/10 unsanitized in-put reach-ing
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 1027--1027
+Underfull \hbox (badness 10000) in paragraph at lines 1013--1013
 []\T1/ppl/m/n/10 Race (TOC-
  []
 
 
-Underfull \hbox (badness 1668) in paragraph at lines 1027--1027
+Underfull \hbox (badness 1668) in paragraph at lines 1013--1013
 []\T1/ppl/m/n/10 check and use sep-a-rated by a
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 1029--1029
+Underfull \hbox (badness 10000) in paragraph at lines 1015--1015
 []\T1/ppl/m/n/10 get/put im-bal-ance, re-f-count
  []
 
 
-Underfull \hbox (badness 1668) in paragraph at lines 1029--1030
+Underfull \hbox (badness 1668) in paragraph at lines 1015--1016
 []\T1/ppl/m/n/10 premature free (UAF) or never-freed
  []
 
 
-Underfull \hbox (badness 2245) in paragraph at lines 1031--1031
+Underfull \hbox (badness 2245) in paragraph at lines 1017--1017
 []\T1/ppl/m/n/10 Integer pro-mo-
  []
 
 
-Underfull \hbox (badness 2617) in paragraph at lines 1032--1032
+Underfull \hbox (badness 2617) in paragraph at lines 1018--1018
 []\T1/ppl/m/n/10 wide value nar-rowed be-tween
  []
 
 
-Underfull \hbox (badness 2556) in paragraph at lines 1033--1033
+Underfull \hbox (badness 2556) in paragraph at lines 1019--1019
 []\T1/ppl/m/n/10 type tag and length val-i-dated
  []
 
 
-Underfull \hbox (badness 4096) in paragraph at lines 1035--1035
+Underfull \hbox (badness 4096) in paragraph at lines 1021--1021
 []\T1/ppl/m/n/10 non-async-signal-safe call in a
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 1036--1036
+Underfull \hbox (badness 10000) in paragraph at lines 1022--1022
 []\T1/ppl/m/n/10 Refcount bor-
  []
 
 [24] [25]
-Overfull \hbox (52.2541pt too wide) in paragraph at lines 1065--1066
+Overfull \hbox (52.2541pt too wide) in paragraph at lines 1051--1052
 []\T1/ppl/m/n/12 Sandbox es-cape as a goal: when the run-time is it-self the sa
 nd-box (browser renderer/render-
  []
 
 [26]
-Underfull \hbox (badness 10000) in paragraph at lines 1080--1080
+Underfull \hbox (badness 10000) in paragraph at lines 1066--1066
 []\T1/ppl/m/n/10 indiscriminate return-
  []
 
 
-Underfull \hbox (badness 1292) in paragraph at lines 1082--1083
+Underfull \hbox (badness 1292) in paragraph at lines 1068--1069
 []\T1/ppl/m/n/10 hooking .ro-data func-tion ta-bles, over-writ-ing
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 1083--1083
+Underfull \hbox (badness 10000) in paragraph at lines 1069--1069
 []\T1/ppl/m/n/10 classical mem-cpy/str-cpy
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 1084--1084
+Underfull \hbox (badness 10000) in paragraph at lines 1070--1070
 []\T1/ppl/m/n/10 arbitrary function-pointer
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 1085--1085
+Underfull \hbox (badness 10000) in paragraph at lines 1071--1071
 []\T1/ppl/m/n/10 MTE / ASan-class
  []
 
 
-Overfull \hbox (1.23723pt too wide) in paragraph at lines 1075--1088
+Overfull \hbox (1.23723pt too wide) in paragraph at lines 1061--1074
  [] 
  []
 
 [27]
-Overfull \hbox (3.36761pt too wide) in paragraph at lines 1111--1112
+Overfull \hbox (3.36761pt too wide) in paragraph at lines 1097--1098
 \T1/ppl/m/n/12 quences (ex-e-cu-tion? data leak? DoS?). ``Needs an-other bug to
  be ex-ploitable''
  []
 
 
-Overfull \hbox (22.37964pt too wide) in paragraph at lines 1121--1122
+Overfull \hbox (22.37964pt too wide) in paragraph at lines 1107--1108
 [][][][][][][][][][][][][][][][][][][][][][][][][][][][][][] 
  []
 
 
-Overfull \hbox (35.95984pt too wide) in paragraph at lines 1124--1125
+Overfull \hbox (35.95984pt too wide) in paragraph at lines 1110--1111
 [][][][][][][][][][][][][][][][][][][][] 
  []
 
 
-Overfull \hbox (2.00934pt too wide) in paragraph at lines 1125--1126
+Overfull \hbox (2.00934pt too wide) in paragraph at lines 1111--1112
 [][][][][][][][][][][][][][][][][][][][][][][][][][][][] 
  []
 
 
-Overfull \hbox (42.74994pt too wide) in paragraph at lines 1130--1131
+Overfull \hbox (42.74994pt too wide) in paragraph at lines 1116--1117
 [][][][][][][][][][][][][][][][][][][][][][][][][][][][][] 
  []
 
 
-Overfull \hbox (0.19864pt too wide) in paragraph at lines 1135--1137
+Overfull \hbox (0.19864pt too wide) in paragraph at lines 1121--1123
 []\T1/ppl/b/n/12 Common re-port de-fects \T1/ppl/m/n/12 (the rea-sons a find-in
 g is re-jected, and there-fore the things
  []
 
 [28]
-Overfull \hbox (4.03992pt too wide) in paragraph at lines 1146--1147
+Overfull \hbox (4.03992pt too wide) in paragraph at lines 1132--1133
 \T1/ppl/m/n/12 ex-ploits with-out co-or-di-na-tion both harms users and re-move
 s your own lever-
  []
@@ -611,13 +612,13 @@ Here is how much of TeX's memory you used:
  28041 multiletter control sequences out of 15000+600000
  587491 words of font info for 93 fonts, out of 8000000 for 9000
  1141 hyphenation exceptions out of 8191
- 72i,12n,79p,684b,1381s stack positions out of 10000i,1000n,20000p,200000b,200000s
+ 72i,12n,79p,684b,1383s stack positions out of 10000i,1000n,20000p,200000b,200000s
 </usr/local/texlive/2024/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy10.pfb
 ></usr/local/texlive/2024/texmf-dist/fonts/type1/public/cm-super/sftt1095.pfb><
 /usr/local/texlive/2024/texmf-dist/fonts/type1/urw/palatino/uplb8a.pfb></usr/lo
 cal/texlive/2024/texmf-dist/fonts/type1/urw/palatino/uplr8a.pfb></usr/local/tex
 live/2024/texmf-dist/fonts/type1/urw/palatino/uplri8a.pfb>
-Output written on main.pdf (31 pages, 187829 bytes).
+Output written on main.pdf (31 pages, 187114 bytes).
 PDF statistics:
  131 PDF objects out of 1000 (max. 8388607)
  87 compressed objects within 1 object stream

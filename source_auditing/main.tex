@@ -46,20 +46,6 @@
 
 %----------------------------------------------------------------------------------------
 
-\section*{Prerequisites}
-\begin{enumerate}
-    \item \textbf{Assumed knowledge}
-    \begin{enumerate}
-        \item C fluency: pointers, integer promotion rules, struct layout and padding, common initial sequence rules, varargs. You must be able to write the code you audit.
-        \item One assembly language at reading level and its calling conventions (any mainstream architecture is fine to start).
-        \item Syscall literacy: what \lstinline{open/read/mmap/fork/exec} actually do, what a descriptor is, enough signal semantics to recognize what a handler may not do.
-        \item Build systems: static vs.\ dynamic linking, configuration switches (--enable/--without) and how they map to compiled-in code
-        \item Python for tooling and one scripting interface to a debugger.
-    \end{enumerate}
-\end{enumerate}
-
-%----------------------------------------------------------------------------------------
-
 \section*{Introduction}
 \begin{enumerate}
 	\item A primary skill of source code auditing is identifying which code may be vulnerable and reachable from an exposed attack surface. Experienced code auditors continually ask themselves the following questions:
