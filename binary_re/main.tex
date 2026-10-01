@@ -57,7 +57,7 @@
     \end{enumerate}
     \item When would you reverse (give example situations)?
     \begin{enumerate}
-        \item Fuzzing an undocumented file format: understanding the parser directs the fuzzer and seeds the corpus (see the fuzzing lecture).
+        \item Fuzzing an undocumented file format: understanding the parser directs the fuzzer and seeds the corpus.
         \item Vulnerability research on closed source targets (browsers, drivers, IoT firmware) where a large part of the attack surface is compiled code.
         \item Building a sanitizer/instrumentation harness: you need to know where the input crosses the trust boundary before you can hook it.
         \item Writing an exploit: kernel structures, driver interaction, and mitigation layout are read from the binary and from the running system.
@@ -66,7 +66,7 @@
     \end{enumerate}
     \item How does reversing fit into the larger VR picture?
     \begin{enumerate}
-        \item It is the static-analysis half of vulnerability research when no source exists; it fills the same role source auditing does for open targets (compare the Comparison of VR Techniques in the source auditing lecture).
+        \item It is the static-analysis half of vulnerability research when no source exists; it fills the same role source auditing does for open targets: static analysis, with high false-positive cost and deep target knowledge required, when the source is not available.
         \item It feeds dynamic analysis: reversing produces breakpoints, input grammars, harness entry points, and expected invariants for debugging and fuzzing.
         \item It is iterative with exploitation: superseding assumptions (allocator layout, mitigation status) requires reading the shipped code.
     \end{enumerate}
@@ -80,20 +80,20 @@
 
 \section*{Overview of How Compilers Work}
 \begin{enumerate}
-    \item Go from C to binary and back. Give them an idea of what happens under the hood.
+    \item Go from C to binary and back, to get an idea of what happens under the hood.
     \begin{enumerate}
         \item A C source file is preprocessed (macro expansion, header inclusion, conditional compilation), then lowered through successively less abstract IRs (in LLVM: Clang AST $\to$ LLVM IR $\to$ selection DAG $\to$ MachineInstr $\to$ MCInst) and encoded into object code.
         \item The reverse path, taken by decompilers, loses information at every lowering step. Names, types, comments, control-flow intent are gone. This is why decompilation is lossy and why guided reversing is needed.
         \item Anything the compiler knows from the source (struct layout, constant expressions) may be folded into immediates; recovery ones are inferred by the decompiler as best-effort.
     \end{enumerate}
-    \item Front end of compiler, (Lexical analysis (lex), grammar(yacc), semantic analysis(type checking))
+    \item Front end of the compiler (lexical analysis, syntax analysis per a grammar, semantic analysis/type checking)
     \begin{enumerate}
         \item Lexical analysis: characters to tokens.
         \item Syntax analysis: tokens to a parse tree per a grammar.
         \item Semantic analysis: type checking, scope resolution, implicit conversions.
         \item Front end output (AST) is lowered to IR; the IR platform-independence is what makes retargetable code generation possible.
     \end{enumerate}
-    \item Back end of compiler, (optimization, register spilling, code generation)
+    \item Back end of the compiler (optimization, register spilling, code generation)
     \begin{enumerate}
         \item Optimization at IR level: dead code elimination, constant propagation, inlining, loop unrolling, vectorization.
         \item Instruction selection: IR to machine instructions; register allocation: instructions to physical registers with spilling to stack slots when registers run out.
@@ -112,15 +112,15 @@
     \item Sections: executable code (.text/\_\_TEXT,\_\_text), initialized data (.data/\_\_DATA,\_\_data), uninitialized data (.bss), read-only data (.rodata/\_\_TEXT,\_\_cstring), unwind/debug info.
     \item Symbol tables map names to addresses; stripping removes them but the code remains. Relocations are patch points applied at link/load time; resolving them is how position-independent calls are walked.
     \item Import tables (PLT/GOT on ELF, stubs and lazy binding on Mach-O) show which library functions the code calls without reversing a byte of it: usually the first stop when triaging a binary.
-    \item File formats are themselves parsers: malformed headers and section tables crash tools (compare fuzzing lecture: disassemblers and loaders are attack surface too).
+    \item File formats are themselves parsers: malformed headers and section tables crash tools (disassemblers and loaders are attack surface too).
 \end{enumerate}
 
 \textbf{ELF, the Linux/macOS-unix default}
 \begin{enumerate}
     \item Read the header, then the program headers, then the section headers: \lstinline{e_ident} identifies the class (32/64) and endianness, \lstinline{e_type} distinguishes executable from shared object from core, and the program headers are what the loader actually consumes.
     \item The dynamic section is the linking contract: \lstinline{DT_NEEDED} lists the libraries, \lstinline{DT_SYMTAB}/\lstinline{DT_STRTAB}/\lstinline{DT_GNU_HASH} locate the symbol and hash tables, \lstinline{DT_INIT}/\lstinline{DT_INIT_ARRAY} name the constructors that run before \lstinline{main}, and \lstinline{DT_FLAGS} records \lstinline{NOW} binding.
-    \item \lstinline{PT_GNU_RELRO} marks the range the loader re-protects read-only after relocation; \lstinline{PT_GNU_STACK} encodes the executable-stack request, and \lstinline{PT_LOAD} entries carry the actual permissions. These are the on-disk mirror of the source auditing lecture's mitigation map.
-    \item The PLT/GOT pair is the import mechanism: each unresolved call goes through a stub that pushes a relocation index and jumps to the resolver; after the first call the slot holds the resolved address (lazy binding). \lstinline{LD_BIND_NOW} or \lstinline{-z now} forces eager resolution, and full RELRO re-protects \lstinline{.got} afterwards --- the RELRO row of the mitigation map.
+    \item \lstinline{PT_GNU_RELRO} marks the range the loader re-protects read-only after relocation; \lstinline{PT_GNU_STACK} encodes the executable-stack request, and \lstinline{PT_LOAD} entries carry the actual permissions. These are the on-disk mirror of the mitigation map: RELRO is visible in \lstinline{PT_GNU_RELRO}, the executable-stack request in \lstinline{PT_GNU_STACK}, NX in the \lstinline{PT_LOAD} permissions, and the loader's symbol protection in full RELRO.
+    \item The PLT/GOT pair is the import mechanism: each unresolved call goes through a stub that pushes a relocation index and jumps to the resolver; after the first call the slot holds the resolved address (lazy binding). \lstinline{LD_BIND_NOW} or \lstinline{-z now} forces eager resolution, and full RELRO re-protects \lstinline{.got} afterwards --- the hardening that closes the GOT-overwrite primitive.
     \item \lstinline{STT_GNU_IFUNC} symbols (glibc's \lstinline{memcpy}, \lstinline{strlen} selection) are resolved at load time by running code, so a resolver is an execution path that exists before \lstinline{main}. Rare, but a real reversing and auditing surprise.
     \item \lstinline{PT_TLS} and the thread-pointer register (\lstinline{fs}/\lstinline{gs} on x86, \lstinline{tpidr_el0} on ARM64) locate thread-local storage; a wrong \lstinline{tpidr} recovery is a common decompiler failure on Android.
     \item Stripping removes \lstinline{.symtab}, not the dynamic symbol table: \lstinline{.dynsym} still names every imported and exported function, so imports survive stripping and are the first thing to read. \lstinline{--only-keep-debug} plus \lstinline{--strip-debug} produces the common shipped split (debug file kept by the vendor).
@@ -147,13 +147,13 @@
 \begin{enumerate}
     \item Reversing tools like Radare, IDA, Binja, objdump, etc
     \begin{enumerate}
-        \item Disassembly + decompilation: IDA Pro (Hex-Rays, the industry standard; paid), Binary Ninja (newer, strong ILs for scripted analysis), Ghidra (NSA open source, includes decompiler), radare2/rizin (free, scriptable, steep learning curve), Hopper (macOS).
+        \item Disassembly + decompilation: IDA Pro (Hex-Rays, the industry standard; commercial), Binary Ninja (newer, strong ILs for scripted analysis), Ghidra (NSA open source, includes decompiler), radare2/rizin (free, scriptable, steep learning curve), Hopper (macOS).
         \item Command line for quick looks: objdump (binary sizes, sections, symbols, simple disasm), llvm-objdump, otool/nm/lipo on macOS, readelf on ELF.
         \item Dynamic analysis: gdb (gdb-multiarch recommended for remote targets), LLDB, debuggers built into the above; Frida for scriptable hooking of live processes; ltrace/strace/turbostat for syscall-level views.
         \item Scriptability is a core requirement: real reversing is automated (batch findings across thousands of functions; write plugins or IDAPython/gdb scripts).
         \item Library and framework choices: \lstinline{LIEF} and \lstinline{pefile} for parsing formats in scripts, \lstinline{Capstone}/\lstinline{Zydis} for disassembly, \lstinline{Keystone} for assembling, \lstinline{Unicorn}/\lstinline{Qiling} for emulation, and \lstinline{angr}/\lstinline{miasm}/\lstinline{Triton} for symbolic work. These are the primitives a custom reversing tool is built from.
         \item Symbol servers and signature databases (Microsoft's public symbol server, \lstinline{FLIRT} signatures, \lstinline{Lumina}, \lstinline{FunctionID}) turn a stripped binary back into a named one. Reading \lstinline{pdb} paths out of a PE or \lstinline{.gnu_debuglink} out of an ELF is the first move of a triage.
-        \item Debugger integration is what separates a disassembler from a reversing tool: the debugger is the ground truth from the debugging module, and a decompiler that cannot be checked against a run is a hypothesis generator.
+        \item Debugger integration is what separates a disassembler from a reversing tool: the debugger is the ground truth, and a decompiler that cannot be checked against a run is a hypothesis generator.
     \end{enumerate}
 \end{enumerate}
 
@@ -161,14 +161,14 @@
 
 \section*{Anti-Reversing Techniques}
 \begin{enumerate}
-    \item Expect the target to resist. Families to recognize and defeat:
+    \item Families:
     \begin{enumerate}
         \item \textbf{Packing}: UPX, VMProtect/Themida style virtualizers, custom crypters. Detection: section entropy high in exactly one section, few imports, self-modifying memory at runtime. Defeat: run and dump (user-mode unpackers, or break at the original entry point in a debugger), or emulate.
         \item \textbf{Anti-debugging}: \lstinline{IsDebuggerPresent}, PEB/proc status checks, \lstinline{ptrace(PT_DENY_ATTACH)} on macOS, timing checks, exception filters as control flow. Defeat: patch out the calls once located, or attach before they run.
         \item \textbf{Obfuscation}: control-flow flattening (dispatcher + state variable shape in the decompiler), opaque predicates, instruction substitution, string encryption. Defeat: patience + scripting; flattening complicates control flow, but the data flow remains traceable.
         \item \textbf{Integrity checks}: self-hash of code sections at runtime. Defeat: patch + recompute/resign, or break the checker call site.
     \end{enumerate}
-    \item Cost logic mirrors the mitigation map in the source auditing lecture: anti-reversing raises the attacker's analysis cost per-function, not the bug count. When a target is heavily obfuscated, put scripting/automation effort in first --- manual reading rarely amortizes.
+    \item The cost logic: anti-reversing raises the attacker's analysis effort per function, not the bug count. When a target is heavily obfuscated, put scripting/automation effort in first --- manual reading rarely amortizes.
     \item Concrete detection tells for the families above:
     \begin{enumerate}
         \item \textbf{Packing}: section entropy near 8.0 in exactly one section, a section name that is not standard (\lstinline{UPX0}/\lstinline{UPX1}), few or no imports, an entry point outside the first section, a writable-and-executable section at load, and a tiny on-disk-to-in-memory size ratio.
@@ -176,13 +176,13 @@
         \item \textbf{Obfuscation}: control-flow flattening (one dispatcher block with a state variable compared in every successor), MBA expressions, opaque predicates that are always true but not provably so, encrypted strings decrypted at use, and instruction substitution. LLVM-based obfuscators (\lstinline{OLLVM}, \lstinline{tigress}) leave recognizable shapes.
         \item \textbf{Integrity checks}: a hash or CRC over the code section, computed and compared at startup; the comparison site is the patch point, and the recompute is the resign step.
     \end{enumerate}
-    \item Defeat toolkit, in cost order: patch the check once located; hide from the check (\lstinline{ScyllaHide}, \lstinline{TitanHide}); unpack to the original entry point (\lstinline{OEP}) and dump; emulate (\lstinline{Unicorn}/\lstinline{Qiling}) so the check never runs; and symbolically simplify (\lstinline{Triton}/\lstinline{miasm}) when the obfuscation is arithmetic. Every one of these is itself a tooling project, which is the cost the protection is buying.
-    \item The honest framing for the report: anti-reversing is not a bug and not a mitigation. It is a tax on the \emph{auditor}, and the correct response is a time/effort estimate, exactly as the mitigation map prices a bypass.
+    \item Defeat toolkit, in cost order: patch the check once located; hide from the check (\lstinline{ScyllaHide}, \lstinline{TitanHide}); unpack to the original entry point (\lstinline{OEP}) and dump; emulate (\lstinline{Unicorn}/\lstinline{Qiling}) so the check never runs; and symbolically simplify (\lstinline{Triton}/\lstinline{miasm}) when the obfuscation is arithmetic. Every one of these is itself a tooling project, which is the effort the protection demands.
+    \item The honest framing for the report: anti-reversing is not a bug and not a mitigation. It is a burden on the \emph{auditor}, and the correct response is a time/effort estimate, exactly as a mitigation warrants an estimate of what its bypass requires.
 \end{enumerate}
 
 \section*{Architectures x86, x86\_64, ARM, ARM64, MIPS, PPC}
 \begin{enumerate}
-    \item Things about arch's.
+    \item Things about architectures.
     \begin{enumerate}
         \item Instruction sets come in orthogonal and non-orthogonal flavors, fixed and variable size encodings, load-store vs. memory-register models. Table:
         \begin{center}
@@ -209,17 +209,17 @@
             \item Knowledge of the convention where the target was compiled is a prerequisite to reading prologues, argument registers, and call sites.
         \end{enumerate}
         \item Features that affect reversing: endianness (bi-endian ARM/MIPS/PPC), byte order of embedded filesystem dumps (big endian MIPS/PPC still common in embedded), SIMD/vector extensions (NEON, SSE/AVX, AltiVec) changing data-flow shape, thus decompiler capability.
-        \item ARM64 hardening shapes are visible in the prologue and epilogue and change what a stack overflow buys: \lstinline{paciasp}/\lstinline{autiasp} (pointer authentication on the saved \lstinline{x29}/\lstinline{x30}), \lstinline{bti c} (branch-target identification, the ARM64 CFI landing pad), and \lstinline{irg}/\lstinline{stg} (memory tagging). A reversing session that does not name these will mis-read the prologue.
+        \item ARM64 hardening shapes are visible in the prologue and epilogue and change what a stack overflow grants: \lstinline{paciasp}/\lstinline{autiasp} (pointer authentication on the saved \lstinline{x29}/\lstinline{x30}), \lstinline{bti c} (branch-target identification, the ARM64 CFI landing pad), and \lstinline{irg}/\lstinline{stg} (memory tagging). A reversing session that does not name these will mis-read the prologue.
         \item x86 hardening shapes: \lstinline{endbr64} at every indirect-call target (CET, the counterpart of \lstinline{bti c}), shadow-stack instructions, and \lstinline{movaps} alignment requirements that make a pivoted stack fault before the chain runs.
         \item ABI details that recur: x86-64 SysV passes a variadic call's vector-register count in \lstinline{al}; a struct return uses a hidden pointer in the first argument register; ARM64 returns small structs in registers, large ones through \lstinline{x8}. A decompiler that guesses the convention wrong produces a plausible but false signature.
         \item Flavour variants worth knowing: ARM EABI hard-float versus soft-float (argument registers versus a software convention), MIPS \lstinline{o32}/\lstinline{n32}/\lstinline{n64}, and x32. Each changes the argument registers and therefore every recovered prototype.
-        \item The audit consequence: an architecture the auditor cannot read is an attack surface the auditor cannot price. The same bug in a driver on MIPS (delay slots, unaligned access) is a different bug than on x86-64, which is why the kernel lecture's vendor drivers are the place to apply this section.
+        \item The audit consequence: an architecture the auditor cannot read is an attack surface the auditor cannot assess. The same bug in a driver on MIPS (delay slots, unaligned access) is a different bug than on x86-64, which is why vendor drivers are the place to apply this section.
     \end{enumerate}
 \end{enumerate}
 
 \section*{Disassemblers}
 \begin{enumerate}
-    \item Possibly show how disassemblers are written.
+    \item How disassemblers are written.
     \begin{enumerate}
         \item Ability to decode all instruction encodings of a target is the easy part: table-driven decoders map opcodes to mnemonic/operand tuples. The hard part is control: what bytes are instructions and where functions begin.
         \item Linear sweep: decode from the start of the section to the end. Simple, breaks on data-in-code, on padding, on jump tables that contain addresses, and on relocation stubs.
@@ -236,13 +236,13 @@
 
 \section*{Decompilers}
 \begin{enumerate}
-    \item Possibly show how decompilations are not unique.
+    \item How decompilations are not unique.
     \begin{enumerate}
         \item A decompiler recovers a program consistent with the binary semantics; many source-level programs are consistent, and there is no canonical reverse mapping.
         \item Redeclaration (many C programs compile to the same binary), undefined structure layout, and unreachable code are the largest classes of ambiguity.
         \item The output is a hypothesis, not truth; when a decompiler and a debugger disagree, the debugger (or a run) is right.
     \end{enumerate}
-    \item Show pitfalls of decompilers, like function inlining and optimizations
+    \item Pitfalls of decompilers, like function inlining and optimizations
     \begin{enumerate}
         \item Inlining erases the call edge: two functions appear as one, types are mixed, the decompiler's inferred prototype is wrong if the call disappeared.
         \item Switch tables are expanded to chains of compares, arrays fold to loops with unrolled bodies: readable structure is lost.
@@ -260,18 +260,18 @@
 \begin{enumerate}
     \item Triage first: \lstinline{file}, \lstinline{otool -L}/\lstinline{readelf -d}, strings, packer/entropy check. What is it, for what platform, packed or not?
     \item Map the surface: imports, exported functions, entry points, and main loops. Locate input processing (syscalls, file/network reads) since that is where attackable behavior lives.
-    \item Automate what you can: scripting disassemblers to bucket functions by size, complexity, and xref count focuses human attention (same logic as the source auditing lecture's ``where to spend limited time'').
+    \item Automate what you can: scripting disassemblers to bucket functions by size, complexity, and xref count focuses human attention (the auditor's time is the scarce resource, so the tool's job is to rank what to read).
     \item Dynamic: attach a debugger, provide real input, and observe execution; the interplay of static and dynamic is what makes reversing fast.
     \item Document as you go: rename functions, label structures, leave notes in your tool. Reversing is cumulative work; a well-labeled IDB is the deliverable.
     \item The triage steps in order, with the tool for each: \lstinline{file} and the magic bytes; \lstinline{binwalk} for firmware and container images; an entropy plot and section table for packing; \lstinline{strings}/\lstinline{FLOSS} for strings (including obfuscated ones); a YARA scan for known malware and components; and imports plus the entry point for the program's shape.
-    \item When the static picture stalls (packed, self-modifying, encrypted strings), go dynamic: run it under a debugger or an emulator (\lstinline{Qiling}/\lstinline{Unicorn}/\lstinline{speakeasy}), let it unpack itself, then dump the memory image and reverse the dump. This is the reversing analogue of the fuzzing module's "skip the outer layer" rule.
-    \item The reversing deliverable is a written understanding, not a screenshot of a decompiler: the call graph, the input parser's structure, the object layouts, and the invariants the code assumes. That document is what the exploit and report sections of this course consume.
-    \item Reversing is iterative with the other modules: a reversing session produces the entry points for the fuzzing module's harness, the breakpoints and expected invariants for the debugging module, and the mitigation and layout facts for the exploitation module.
+    \item When the static picture stalls (packed, self-modifying, encrypted strings), go dynamic: run it under a debugger or an emulator (\lstinline{Qiling}/\lstinline{Unicorn}/\lstinline{speakeasy}), let it unpack itself, then dump the memory image and reverse the dump. This is the reversing analogue of skipping the outer layer: feed the already-unpacked image to the analysis instead of fighting the packer.
+    \item The reversing deliverable is a written understanding, not a screenshot of a decompiler: the call graph, the input parser's structure, the object layouts, and the invariants the code assumes. That document is what the exploit work and the report consume.
+    \item Reversing is iterative with exploitation: a reversing session produces the harness entry points, the breakpoints and expected invariants for dynamic analysis, and the mitigation and layout facts for exploit construction.
 \end{enumerate}
 
 \section*{Reversing Examples}
 \begin{enumerate}
-    \item Example x86, x86\_64, ARM, ARM64, MIPS and PPC. Compile a non-trivial (but smaller) program and compare architectures; the lab document walks a live session on the course's challenge binary (\lstinline{binary_re/targets/checks.c}).
+    \item Example x86, x86\_64, ARM, ARM64, MIPS and PPC. Compile a non-trivial (but smaller) program and compare architectures; the lab document walks a live session on this module's challenge binary (\lstinline{binary_re/targets/checks.c}).
     \begin{enumerate}
         \item The same C source, compiled at -O0 for two architectures (clang on macOS: \lstinline{clang -arch x86_64 -arch arm64 -c hello.c}):
         \footnotesize
@@ -280,33 +280,33 @@
         \toprule
         x86\_64 & ARM64 \\
         \midrule
-        \lstinline{pushq %rbp} & \lstinline{sub sp, sp, #0x20} \\
-        \lstinline{movq %rsp, %rbp} & \lstinline{stp x29, x30, [sp, #0x10]} \\
-        \lstinline{subq $0x10, %rsp} & \lstinline{add x29, sp, #0x10} \\
-        \lstinline{leaq "..."(%rip), %rdi} & \lstinline{adrp x0, l_.str@PAGE; add x0, x0, ...} \\
-        \lstinline{callq _printf} & \lstinline{bl _printf} \\
-        \lstinline{xorl %eax, %eax} & \lstinline{ldr w0, [sp, #0x8]} \\
-        \lstinline{popq %rbp; retq} & \lstinline{ldp x29, x30, [sp, #0x10]; add sp, #0x20; ret} \\
+        \lstinline|pushq %rbp| & \lstinline|sub sp, sp, #0x20| \\
+        \lstinline|movq %rsp, %rbp| & \lstinline|stp x29, x30, [sp, #0x10]| \\
+        \lstinline|subq $0x10, %rsp| & \lstinline|add x29, sp, #0x10| \\
+        \lstinline|leaq "..."(%rip), %rdi| & \lstinline|adrp x0, l_.str@PAGE; add x0, x0, ...| \\
+        \lstinline|callq _printf| & \lstinline|bl _printf| \\
+        \lstinline|xorl %eax, %eax| & \lstinline|ldr w0, [sp, #0x8]| \\
+        \lstinline|popq %rbp; retq| & \lstinline|ldp x29, x30, [sp, #0x10]; add sp, #0x20; ret| \\
         \end{tabular}
         \end{center}
         \item Read it: x86 stores the frame pointer on the stack at every call (the return address is a stack pop away), ARM64 keeps the return address in x30 (LR) and must save it in the prologue --- the \lstinline{stp}/\lstinline{ldp} pair writes/loads both callee-saved registers in one instruction.
         \item Note the ARM64 pattern \lstinline{adrp/add}: PC-relative 4K-page addressing needs two instructions to form a 64-bit address; on x86\_64 a single RIP-relative \lstinline{lea} handles it. Recognizing these idiom pairs is half of reading new architectures.
         \item Follow the call convention: \lstinline{bl} writes the return address into x30 (LR); \lstinline{ret} jumps via x30. That is why overwriting the saved x30 slot in a stack buffer overflow redirects execution on ARM64 the same way overwriting the saved return address does on x86.
     \end{enumerate}
-    \item I'd like real world examples here.
+    \item Real-world examples.
     \begin{enumerate}
         \item Take a known CVE and its patch, and reproduce the bug function from the pre-patch binary; identify the missing bounds check in the disassembly. Good practice targets with published writeups: OpenSSL CVE-2014-0160 (Heartbleed), Stagefright libstagefright.so (CVE-2015-3864, integer overflow in the MP4 parser), AppWeb CVE-2018-8715 or older auth-bypass issues.
         \item Exercises: find the comparisons guarding the vulnerable path (the bound check that is missing or wrong), the call into memcpy-like routines, and the length argument. Diff patched and unpatched versions side by side with a binary diff tool (BinDiff, Diaphora) to see the fix as code motion.
     \end{enumerate}
     \item Perhaps tear down an embedded system and then show the following reversing.
     \begin{enumerate}
-        \item Embedded teardown flow: obtain firmware (vendor download, SPI flash dump, UART shell), unpack (\lstinline{binwalk} for filesystem images: SquashFS, JFFS2, CramFS), identify binaries (busybox plus vendor daemons), and audit the vendor-written parts (compare the source auditing lecture's ``custom code is where the bugs are'').
+        \item Embedded teardown flow: obtain firmware (vendor download, SPI flash dump, UART shell), unpack (\lstinline{binwalk} for filesystem images: SquashFS, JFFS2, CramFS), identify binaries (busybox plus vendor daemons), and audit the vendor-written parts (custom code is where the bugs are).
         \item Common bug classes found this way: hardcoded credentials, unauthenticated update acceptance, command injection through configuration values, stack overflows in command parsers.
     \end{enumerate}
     \item Show example of an application process doing network stuff.
     \begin{enumerate}
         \item Reverse triage of a network daemon: find \lstinline{socket}/\lstinline{bind}/\lstinline{accept} (or higher wrappers), follow the buffer that \lstinline{recv} fills into parsing functions, and identify length fields copied through.
-        \item Using a debugger: break on the parse entry with a malformed client packet; watch parameter registers under the target's calling convention. This is the binary-side analogue of the AppWeb \lstinline{parseHeaders()} lab in the source auditing material.
+        \item Using a debugger: break on the parse entry with a malformed client packet; watch parameter registers under the target's calling convention. This is the binary-side analogue of auditing a web server's header parser with source.
     \end{enumerate}
     \item Show example of reversing the bootloader to setup a chip.
     \begin{enumerate}
@@ -318,13 +318,13 @@
         \item Proprietary filesystem: reverse the on-disk format by starting with mount logic and its section parsing; document the superblock and inode layout as C structs in your tool; compare against garbage file-system images you create with partially randomized bytes.
         \item Proprietary algorithm (custom crypto, license checking, game save obfuscation): find the entry by following its caller context (where data is transformed), then instrument inputs/outputs to get pairs of (plaintext, ciphertext) and infer the transformation; static plus dynamic yields the fastest recoveries.
     \end{enumerate}
-    \item Reverse a fuzzing crash back to source (the pipeline the fuzzing module leaves open): take a minimized input, break on the parser entry, and read the length and pointer arguments in the registers. The reversing session answers the two questions the sanitizer report only states: which check is missing, and what the attacker controls.
+    \item Reverse a crash from a fuzzing campaign back to source: take a minimized input, break on the parser entry, and read the length and pointer arguments in the registers. The reversing session answers the two questions the sanitizer report only states: which check is missing, and what the attacker controls.
     \begin{enumerate}
-        \item The specific exercise is the course's own target: \lstinline{lab_target.c} and \lstinline{checks.c} in this repo are small enough to reverse by hand and layered enough to teach the triage order (magic, length, checksum, then the bug).
+        \item The specific exercise is this module's own target: \lstinline{checks.c} in \lstinline{binary_re/targets/} is small enough to reverse by hand and layered enough to teach the triage order (magic, length, checksum, then the bug).
     \end{enumerate}
-    \item Reverse a driver's \lstinline{ioctl}/\lstinline{mmap} without source, which is the vendor-driver case from the kernel lecture: find the \lstinline{file_operations} table through the driver's registration call, then read each verb's argument copy and bounds check. The \lstinline{model_driver.c} companion in the Linux kernel module is the same shape with source.
-    \item Diff reversing: when a patch exists, diff the patched and unpatched binaries (\lstinline{BinDiff}, \lstinline{Diaphora}, \lstinline{radiff2}) and read the change as code motion. The added check names the bug, which is the fastest root cause in the whole course.
-    \item Reversing a protocol implementation from a captured session (the network side of the fuzzing module): locate the \lstinline{recv} call site, name the message parser, and rebuild the wire format as a grammar. That grammar is the generative fuzzer's input.
+    \item Reverse a driver's \lstinline{ioctl}/\lstinline{mmap} without source, which is the vendor-driver case: find the \lstinline{file_operations} table through the driver's registration call, then read each verb's argument copy and bounds check. The same audit applies with source in hand: read each verb's argument copy and bounds check in the registration path.
+    \item Diff reversing: when a patch exists, diff the patched and unpatched binaries (\lstinline{BinDiff}, \lstinline{Diaphora}, \lstinline{radiff2}) and read the change as code motion. The added check names the bug, which is the fastest root cause available.
+    \item Reversing a protocol implementation from a captured session: locate the \lstinline{recv} call site, name the message parser, and rebuild the wire format as a grammar. That grammar is the generative fuzzer's input.
 \end{enumerate}
 
 \begin{sectionbox}
@@ -347,7 +347,7 @@ _main:
 \end{sectionbox}
 
 \section*{Conclusion}
-Reversing is the complement of source auditing: the same analysis questions (where does input enter, how is it validated, what objects live where) asked without source code. Modern tooling (decompilers, scriptable disassemblers, dynamic instrumentation) has moved the bottleneck from reading assembly to understanding program structure and data flow, which is a skill transferable from source auditing. Fall back on the source auditing methods whenever a decompiler lead dead-ends; fall back on reversing whenever the source lies.
+Reversing asks the same analysis questions as source auditing (where does input enter, how is it validated, what objects live where) but without source code. Modern tooling (decompilers, scriptable disassemblers, dynamic instrumentation) has moved the bottleneck from reading assembly to understanding program structure and data flow. Fall back on the same audit methods whenever a decompiler lead dead-ends.
 
 Two habits carry the whole module. First, name the format, the architecture, and the compiler before reading any code, because each fixes what the code can look like and what the mitigations cost. Second, treat every recovered name, type, and prototype as a hypothesis with a confidence, and check the ones the exploit depends on against a run. The reversing deliverable is a written, checkable understanding, not a decompiler window.
 

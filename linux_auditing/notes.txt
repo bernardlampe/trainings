@@ -6,17 +6,17 @@
     kernel helpers such as keyctl
     filesystems
     race conditions
-    gpu's
+    GPUs
 
 * Driver auditing section
-    talk about DAC and MAC (selinux) and how it's implemented
-    identify what is available /dev/ and /proc/ and to whom
+    DAC and MAC (SELinux) and how each is implemented
+    identify what is available in /dev/ and /proc/ and to whom
     identify fops for each available thing
-    focus on things that are implemented by vendors or third party (lower hanging fruit)
+    focus on things implemented by vendors or third parties (lower-hanging fruit)
     make sure you understand what open and release are doing and are matched up
-    focus on mmap and that they check parameters correctly
+    focus on mmap and its parameter checks
     focus on extensible drivers such as ion
-    focus on things in the driver which are overrode in higher level like /proc level
+    focus on things in the driver which are overridden at a higher level, such as the /proc level
 
 * Kernel fuzzing
     kAFL
@@ -25,7 +25,7 @@
     razzer
 
 * Android specific attack surfaces
-    kernel side: /proc, /dev (gpu, ashmem, binder, ...), 
+    kernel side: /proc, /dev (gpu, ashmem, binder, ...)
     user side: all the services and how to go after them
 
 * Kernel exploitation

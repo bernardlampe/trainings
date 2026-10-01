@@ -48,32 +48,32 @@
 
 \section*{Introduction}
 \begin{enumerate}
-    \item Miller et al's 1990 "An Empirical Study of the Reliability of UNIX Utilities": piping random garbage into standard UNIX utilities crashed or hung 25--33\% of them, and roughly 9\% of the programs that crashed did so on every input. Fuzzing was born as: throw structured-ish randomness at a parser and watch for SIGSEGV. The same study was repeated in 1995 ("Fuzz Revisited"), 2000, 2006 and 2020; the failure rate fell but never to zero, which is the point.
-    \item Most important question is "When is using fuzzing appropriate/productive?" and "If fuzzing is appropriate, what type of fuzzing should be used?"
+    \item Miller et al.'s 1990 ``An Empirical Study of the Reliability of UNIX Utilities'': piping random garbage into standard UNIX utilities crashed or hung 25--33\% of them, and roughly 9\% of the programs that crashed did so on every input. Fuzzing was born as: throw structured-ish randomness at a parser and watch for SIGSEGV. The same study was repeated in 1995 (``Fuzz Revisited''), 2000, 2006 and 2020; the failure rate fell but never to zero, which is the point.
+    \item The most important questions are ``When is using fuzzing appropriate/productive?'' and ``If fuzzing is appropriate, what type of fuzzing should be used?''
     \begin{enumerate}
         \item Productive when: the target parses rich untrusted input (file formats, network protocols, IPC), input structure is deep (many nested layers), and there is time for corpus development. Poor when: input entropy is small (a config file with three booleans) or the interesting logic is behind crypto/compression you cannot traverse.
         \item Fuzzing has a hard time getting past encryption, hashing or compression algorithms. Usually patch out or fuzz afterwards: decrypt the payload first, or fuzz the plain-text post-processor. Compression is the same: decompress first, then fuzz the decompressed stream.
-        \item The cost model is three-part: setup cost (build the harness and the corpus), per-execution cost (executions per second, the throughput that decides whether a campaign finishes), and triage cost (every crash must be minimized and priced). Fuzzing is a bargain only when the per-execution cost is small and the target parses many similar inputs.
+        \item The cost model is three-part: setup cost (build the harness and the corpus), per-execution cost (executions per second, the throughput that decides whether a campaign finishes), and triage cost (every crash must be minimized and root-caused). Fuzzing pays off only when the per-execution cost is small and the target parses many similar inputs.
     \end{enumerate}
     \item Fuzzing has low false positives. A crash, hang, or sanitizer report is a real, observed deviation: reproduction is part of triage. The flip side is the oracle problem: a fuzzer only finds what the oracle can see, so bugs that do not crash or hang are invisible to it.
     \item Fuzzing results in an unminimized input file that triggers a bug. The raw output of a campaign is a crash set, not a vulnerability report; the distance between the two is the triage pipeline below.
-    \item Must triage outcomes (crashes, hangs) first. Duplicates (same root cause, different input) dominate raw crash counts: dedupe on stack hash. A hang is usually an infinite loop or an expensive input; distinguish by sampling coverage.
-    \item Root causing can be hard. Minimize input first by bi-secting input (dd in a loop, \lstinline{delta}, libFuzzer's \lstinline{-minimize_crash=1}).
+    \item Outcomes (crashes, hangs) must be triaged first. Duplicates (same root cause, different input) dominate raw crash counts: dedupe on stack hash. A hang is usually an infinite loop or an expensive input; distinguish by sampling coverage.
+    \item Root causing can be hard. Minimize input first by bisecting the input (dd in a loop, \lstinline{delta}, libFuzzer's \lstinline{-minimize_crash=1}).
     \item A minimized input then gets root-caused: map the crashing path in the debugger/source, identify the memory error class, evaluate exploitability. The full pipeline is taught in the \textbf{Crash Triage and Exploitability} section below.
-    \item Fuzzing is orthogonal to the rest of the course: it is the dynamic arm of static analysis, and it is strongest exactly where source auditing is weakest (deep parser state that no one would read by hand) and weakest exactly where source auditing is strongest (semantic bugs, non-crashing logic errors, missed attack surface).
+    \item Fuzzing is orthogonal to source auditing: it is the dynamic arm of analysis, and it is strongest exactly where source auditing is weakest (deep parser state that no one would read by hand) and weakest exactly where source auditing is strongest (semantic bugs, non-crashing logic errors, missed attack surface).
 \end{enumerate}
 
 \section*{Fuzzing Theory}
 \begin{enumerate}
 	\item Dumb fuzzing, black box. No knowledge. Low penetration: mutations rarely satisfy magic values, checksums, and structural nesting, so most inputs die in early validation. Still useful as a cheap first pass.
-	\item Smart fuzzing, white box. Complete re-implement parser. Max penetration, max human effort. A generator that emits well-formed documents from a grammar is "smart" but only explores the grammar's own paths.
-    \item Need a mix of both to hit unknown code path in unexpected ways: structure-aware mutation (mutate inside a format the tool understands) is the practical sweet spot.
+	\item Smart fuzzing, white box. Complete re-implementation of the parser. Max penetration, max human effort. A generator that emits well-formed documents from a grammar is ``smart'' but only explores the grammar's own paths.
+    \item A mix of both is needed to hit unknown code paths in unexpected ways: structure-aware mutation (mutate inside a format the tool understands) is the practical sweet spot.
     \item Fuzzing can be seen as following compiler design in reverse. (Lexical analysis, syntax analysis, semantic analysis, code generator, optimizer, assembly generation.) A parser validates in the same order the compiler front end does; each validation layer is a wall between the fuzzer and deep code. Generators that produce valid tokens for layer $n$ but invalid semantics for layer $n{+}1$ penetrate exactly $n$ layers.
 	\item Penetration depth is the formal version of that intuition: the fraction of random inputs that pass each successive validation layer. The mean over layers is the Fuzzing Book's \emph{opacity}; it predicts how many executions a random fuzzer needs, because the probability of reaching depth $n$ is the product of the per-layer pass rates.
-	\item Fuzzing as a search general problem: maximize discovery of new states subject to a budget of executions. Greedy mutation (hill-climbing) vs. global search. Random mutation is a biased sampler over the input space; a coverage signal turns it into hill-climbing over the space of reached code.
+	\item Fuzzing as a general search problem: maximize discovery of new states subject to a budget of executions. Greedy mutation (hill-climbing) vs. global search. Random mutation is a biased sampler over the input space; a coverage signal turns it into hill-climbing over the space of reached code.
 	\item Fuzzing as a maze analogy: inputs are paths through the maze of branches; coverage feedback is the cheese smell.
-	\item Fuzzing as a directed search problem (A*): coverage feedback approximates an admissible heuristic for "makes progress toward unexecuted code". Solvers (an actual A* implementation is symbolic execution) are the exact version.
-	\item The search framing answers "when should fuzzing work": the input space is effectively infinite, the set of bug-triggering inputs is finite but tiny, and every fuzzer is a sampler that only succeeds if the sample can land on the tiny set. That is why a good corpus (a set of already-deep inputs) is worth more than a better mutation operator.
+	\item Fuzzing as a directed search problem (A*): coverage feedback approximates an admissible heuristic for ``makes progress toward unexecuted code''. Solvers (an actual A* implementation is symbolic execution) are the exact version.
+	\item The search framing answers ``when should fuzzing work'': the input space is effectively infinite, the set of bug-triggering inputs is finite but tiny, and every fuzzer is a sampler that only succeeds if the sample can land on the tiny set. That is why a good corpus (a set of already-deep inputs) contributes more than a better mutation operator.
 \end{enumerate}
 
 \section*{Mutation Fuzzing}
@@ -90,7 +90,7 @@
 	\item Grammar, generators: an explicit model of the input (BNF grammar, protocol state machine, format description like a Wireshark dissector or a Kaitai Struct file) samples or systematically emits inputs. Tools in this family: ANTLR, Domato, Dharma, Peach, Sulley/boofuzz, Fuzzilli.
 	\item Strengths: passes validation layers by construction, so reaching deep code is immediate; the model documents your understanding, and emitting edgy semantics (length fields that lie, zero counts, recursion depth attacks) is easy.
 	\item Weaknesses: bugs live in the gap between the model and the implementation. If your grammar is too correct, you never violate the parser's assumption. Generators must deliberately degrade plausibility, or they only test the code the model describes.
-	\item The model is also a liability: a grammar that is wrong in the same way as the parser misses the same bugs, and a grammar that is right costs as much to build as the parser cost to write. The generative fuzzer's budget is human, not machine.
+	\item The model is also a liability: a grammar that is wrong in the same way as the parser misses the same bugs, and a grammar that is right costs as much to build as the parser did to write. The generative fuzzer's budget is human, not machine.
 	\item When should a generative fuzzer be used? When the format is documented or reversed, and the state space is too large for mutation alone (protocol stateful, nested containers).
 	\item Grammar mutation (Gramatron, Nautilus) is the hybrid: mutate the grammar or the derivation tree rather than the byte string, and keep a byte-level fuzzer for the leaves.
 \end{enumerate}
@@ -102,7 +102,7 @@
 	\item Hangs: wall-clock timeout per input. Distinguish from slow-but-terminating inputs by re-running with doubled timeouts; a hang that survives a much larger timeout is a bug, one that does not is a performance issue.
 	\item Sanitizers are the standard upgraded detector:
 	\begin{enumerate}
-	    \item ASan (AddressSanitizer): redzones around stack/heap/global allocations, quarantine for freed memory: catches OOB read/write, UAF, double-free at first byte of error instead of first crash. Verified demonstration: a heap overflow at \lstinline{buf[4]} into a \lstinline{malloc(4)} buffer is silent at -O1 (dead store) but reported at -O0 with a full "heap-buffer-overflow WRITE of size 1" report. Lesson: sanitizer visibility depends on the optimizer; test the harness at the shipped optimization level.
+	    \item ASan (AddressSanitizer): redzones around stack/heap/global allocations, quarantine for freed memory: catches OOB read/write, UAF, double-free at first byte of error instead of first crash. Verified demonstration: a heap overflow at \lstinline{buf[4]} into a \lstinline{malloc(4)} buffer is silent at -O1 (dead store) but reported at -O0 with a full ``heap-buffer-overflow WRITE of size 1'' report. Lesson: sanitizer visibility depends on the optimizer; test the harness at the shipped optimization level.
 	    \item MSan (MemorySanitizer): uninitialized memory reads. Requires an instrumented libc and complete initialization of everything the harness itself allocates, or it reports its own noise.
 	    \item UBSan (UndefinedBehaviorSanitizer): signed overflow, bad shifts, misaligned pointers, out-of-bounds array indexing (\lstinline{-fsanitize=undefined}); traps instead of aborting with \lstinline{-fsanitize-trap}.
 	    \item TSan (ThreadSanitizer): data races, for the concurrency bugs static analysis cannot see.
@@ -121,13 +121,13 @@
 		\item \textbf{Dedupe}: group crashes by stack hash at the crash frame. Raw counts are dominated by copies of the same root cause (thousands of inputs hitting one sifted strcpy). Sanitizers print the shadow-memory type (heap-buffer-overflow / UAF / double-free / stack); group by type $+$ stack. Tools: \lstinline{afl-collect}, \lstinline{crashwalk}, CASR.
 		\item \textbf{Minimize}: bisect the trigger file (dd, delta, libFuzzer \lstinline{-minimize_crash}) until the shortest reproducing input. Fixed-point: minimization is done when further reduction changes the crash location.
 		\item \textbf{Reproduce deterministically}: plain ASLR/pid/time/rng source control, same options on every replay (\lstinline{ASAN_OPTIONS} etc). Non-deterministic crashes need per-race seeds until stable; mark the seed recipe in the report.
-		\item \textbf{Root cause}: walk the minimized trigger under a debugger and map it to source (or disassembly): which check is missing/wrong? Express the root cause in one or two sentences; if you cannot, the minimization is not done. Compare classes against the source auditing lecture's bug pattern sections.
-		\item \textbf{Assess exploitability}, and price it against the deployed mitigations using the source auditing lecture's mitigation map: what primitive does the crash actually grant (arbitrary write? partial, fixed-length, controlled source?), and what attacker preconditions does it need?
+		\item \textbf{Root cause}: walk the minimized trigger under a debugger and map it to source (or disassembly): which check is missing/wrong? Express the root cause in one or two sentences; if you cannot, the minimization is not done. Compare classes against the known bug patterns (overflow, UAF, type confusion, uninitialized use) and name the class explicitly.
+		\item \textbf{Assess exploitability} against the deployed mitigations (NX, canary, ASLR/PIE, RELRO, FORTIFY\_SOURCE): what primitive does the crash actually grant (arbitrary write? partial, fixed-length, controlled source?), and what attacker preconditions does it need?
 		\item \textbf{Write the report}: minimized reproducer $+$ one-paragraph root cause $+$ primitive statement $+$ affected builds. The vuln-research deliverable is the report, not the fuzzer log.
 	\end{enumerate}
 	\item Exploitability heuristics, in decreasing order of confidence that a crash converts to a bug:
 	\begin{enumerate}
-		\item Controlled-length, controlled-content write inside a large heap region: scheduler-compatible, near-certainly exploitable (see heap ``ideal qualities'').
+		\item Controlled-length, controlled-content write inside a large heap region: scheduler-compatible, near-certainly exploitable (it satisfies the ideal heap vulnerability qualities: control of the allocation size, the overflowed data, and the overflow length).
 		\item Controlled target address: near-arbitrary write, exploitable modulo CFI.
 		\item Uncontrolled-length overflow (long memcpy): trivially DoS, exploitable only if a same/adjacent-size object has interesting metadata.
 		\item Hang/overtime/slow-alloc: usually quality-of-life issues only, unless it models a resource-exhaustion primitive on a protocol-adjacent target.
@@ -138,15 +138,15 @@
 
 \section*{Corpus Distillation}
 \begin{enumerate}
-	\item A fuzzer is only as good as its corpus. The mean opacity of the format determines how many mutations the seed set needs; a rich seed set of real-world samples is worth more than algorithmic cleverness. A seed that reaches deep code is worth thousands of random ones.
-	\item Sources: application test suites, documentation examples, Wireshark protocol sample captures, media sample repositories, vendor sample repos, user forums ("my file won't open" posts are gold), and previously captured fuzz corpora (AFL's bundled testcases, the OSS-Fuzz seed corpora).
+	\item A fuzzer is only as good as its corpus. The mean opacity of the format determines how many mutations the seed set needs; a rich seed set of real-world samples contributes more than algorithmic cleverness. A seed that reaches deep code does the work of thousands of random ones.
+	\item Sources: application test suites, documentation examples, Wireshark protocol sample captures, media sample repositories, vendor sample repos, user forums (``my file won't open'' posts are especially valuable), and previously captured fuzz corpora (AFL's bundled testcases, the OSS-Fuzz seed corpora).
 	\item Distillation: dedupe (by content hash is naive; by coverage reached is the right metric), unionize the corpus (drop seeds that add no new coverage), repair (fix corrupt samples so they parse), and minimize each retained seed.
 	\item Coverage-guided merging: for each candidate seed, run once with coverage; keep it if it covers an edge no kept seed does. Result: the minimum corpus that still meets the coverage criterion --- the standard \lstinline{afl-cmin} operational definition. libFuzzer's \lstinline{-merge=1} is the same algorithm over a different coverage map.
 \end{enumerate}
 
 \section*{Code Coverage}
 \begin{enumerate}
-	\item Coverage is the only cheap oracle for "is the fuzzer making progress". Flavors (weakest to strongest):
+	\item Coverage is the only cheap oracle for ``is the fuzzer making progress''. Flavors (weakest to strongest):
 	\begin{enumerate}
 	    \item Function coverage: executed functions.
 	    \item Edge (branch) coverage: executed source-sink pairs of control flow --- the standard metric (AFL edges, source-based \lstinline{-fsanitize-coverage=trace-pc-guard}).
@@ -155,7 +155,7 @@
 	\end{enumerate}
 	\item Coverage map: a bitmap hash of observed edges; every new edge triggers mutation recruiting in feedback fuzzers. The map is the interface between the instrumented target and the fuzzing loop, and its collisions (two edges hashing to one slot) are why AFL uses a randomized location seed.
 	\item Measurement tools: \lstinline{gcov}/\lstinline{llvm-cov}/\lstinline{lcov} for source-level line and branch coverage, \lstinline{afl-showmap} and \lstinline{afl-cmin} for AFL maps, \lstinline{sancov} for the sanitizer-coverage hooks, and \lstinline{kcov} for the kernel.
-	\item Coverage is a proxy, not a goal: a fuzzer can cover a line without exercising the state that makes it buggy. That gap is exactly the difference between the two static and dynamic families described in the source auditing module.
+	\item Coverage is a proxy, not a goal: a fuzzer can cover a line without exercising the state that makes it buggy. That gap is exactly the difference between the static and dynamic analysis families.
 \end{enumerate}
 
 \section*{Feedback Fuzzing}
@@ -164,7 +164,7 @@
 	\item libFuzzer: same feedback idea, in-process, linking the harness directly, with \lstinline{LLVMFuzzerTestOneInput}. Faster than AFL but any crash takes down the fuzzer (mitigated by \lstinline{-fork=1}). Knobs worth knowing: \lstinline{-max_len}, \lstinline{-timeout}, \lstinline{-rss_limit_mb}, \lstinline{-runs}, \lstinline{-dict}, \lstinline{-jobs}/\lstinline{-workers}, \lstinline{-merge=1}, \lstinline{-minimize_crash=1}, and the \lstinline{LLVMFuzzerInitialize}/\lstinline{LLVMFuzzerCustomMutator} hooks.
 	\item honggfuzz: hardware counters (perf\_event) for coverage; useful when recompilation is impossible. Its sanitizer integration is the reason it is used on binaries that cannot be rebuilt with coverage hooks.
 	\item AFL++: the modern fork of AFL. Persistent mode (\lstinline{__AFL_LOOP}), \lstinline{AFL_LLVM_LAF_ALL} and \lstinline{AFL_LLVM_CMPLOG} are the features that make it competitive on magic-value-heavy formats.
-	\item KASAN: kernel AddressSanitizer. Pairs with syzkaller's sys-CALL descriptions to fuzz the syscall surface of a kernel: kernel-side feedback fuzzing end to end (see the kernel fuzzing list in the Linux auditing notes).
+	\item KASAN: kernel AddressSanitizer. Pairs with syzkaller's sys-CALL descriptions to fuzz the syscall surface of a kernel: kernel-side feedback fuzzing end to end (the standard kernel fuzzers are syzkaller, kAFL/QAFL, Trinity, and razzer).
 \end{enumerate}
 
 \section*{Concolic and Symbolic Fuzzing}
@@ -185,7 +185,7 @@
 
 \section*{Fuzzing Deeper}
 \begin{enumerate}
-    \item Theory about skipping outer layers: outer layers (network stack, container formats, compression scripts) consume fuzzing budget validating structure instead of exercising interesting parse state. When the outer layer is well-fuzzed, patch or emulate it: feed fuzzed data directly into the layer-$N$ parser (the "structure-aware deep fuzzing" idea).
+    \item Theory about skipping outer layers: outer layers (network stack, container formats, compression scripts) consume fuzzing budget validating structure instead of exercising interesting parse state. When the outer layer is well-fuzzed, patch or emulate it: feed fuzzed data directly into the layer-$N$ parser (the ``structure-aware deep fuzzing'' idea).
     \item Techniques: split the target into its layers and harness each parser in isolation; stub out decompression; provide torn packets only at the boundary under test. The harness is where the engineering goes, not the mutator.
     \item Example: fuzzing a media container. Rather than mutating whole files, generate valid container structure with fuzzed field values; or wrap the media parser so that the \lstinline{demux_open()} entry is called with a fuzzed in-memory buffer, skipping the file layer.
 \end{enumerate}
@@ -193,7 +193,7 @@
 \section*{Domain-Specific Fuzzing}
 \begin{enumerate}
     \item Media fuzzing: image libraries (libpng, libjpeg, FFmpeg family). Historical bug source of CVEs; high value because images arrive from untrusted senders automatically (MMS, browsers, thumbnails). FFmpeg's own tools (\lstinline{ffmpeg -f lavfi}), the last 10 years of oss-fuzz artifacts, and format-specific mutators (PDF mutators, media seed corpora from the Fuzzing Book) support this.
-    \item JavaScript (AST Fuzzing): language fuzzers mutate at the AST level (Fuzzilli's coverage-guided engine, Domato's DOM grammar), because text-level mutation of source produces syntax errors, not semantic depth. JIT compilers are the bug-rich frontier (compare the static analysis note: JIT engines are cited in the source auditing lecture as back-end components to prioritize).
+    \item JavaScript (AST Fuzzing): language fuzzers mutate at the AST level (Fuzzilli's coverage-guided engine, Domato's DOM grammar), because text-level mutation of source produces syntax errors, not semantic depth. JIT compilers are the bug-rich frontier (JIT engines are a classic back-end component to prioritize in an audit).
     \item Fuzzing network protocols (HTTP, HTTPS, DHCP, NTP, DNS, ...): stateless ones (DNS, DHCP) fuzz easily with packet generators; stateful ones (TLS, HTTP/2) need state machines and are where generative $+$ feedback hybrids (TLS-Attacker, boofuzz, h2fuzz) were developed. Practical concern: fuzz the protocol decoder of the server, not the cryptography. That last assertion is a design decision, not a discovery.
     \item Fuzzing other stuff: file systems (disk image fuzzing against fsck), firmware binaries (context-aware emulation with Firmadyne/FirmAE/QEMU), kernel syscalls (syzkaller), USB stacks, and the network stacks of embedded devices.
 \end{enumerate}
@@ -226,7 +226,7 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
 \end{sectionbox}
 
 \begin{sectionbox}
-\begin{lstlisting}[language=C, caption={Standalone driver for running the same harness on a single file (verified: triggers ASan "heap-buffer-overflow" at -O0, silent at -O1).}]
+\begin{lstlisting}[language=C, caption={Standalone driver for running the same harness on a single file (verified: triggers ASan ``heap-buffer-overflow'' at -O0, silent at -O1).}]
 #include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -250,7 +250,7 @@ int main(int argc, char **argv)
 %-------------------------------------------------------------------------------
 
 \section*{Conclusion}
-Fuzzing gives you a small number of high-quality, hard-to-discover memory-corruption bugs at the cost of setup and infrastructure. It is orthogonal to source auditing: its weak spot is precisely what source auditing is strong at (non-crashing logic bugs, semantic errors, missed attack surface), and vice versa (the auditing lecture's explanation of why the two static and dynamic families win on different bug classes). The craft is in the corpus, the harness, and the detection layer, not in mutating bytes: budget your fuzzing time accordingly.
+Fuzzing gives you a small number of high-quality, hard-to-discover memory-corruption bugs at the cost of setup and infrastructure. It is orthogonal to source auditing: its weak spot is precisely what source auditing is strong at (non-crashing logic bugs, semantic errors, missed attack surface), and vice versa (static and dynamic analysis win on different bug classes). The craft is in the corpus, the harness, and the detection layer, not in mutating bytes: budget your fuzzing time accordingly.
 
 The same conclusion, stated as a rule of thumb: fuzzing is productive when the target parses rich untrusted input, the harness reaches the parser directly, and the oracle (sanitizer, differential, or crash) can see the bug class you care about. When any one of those three is missing, the campaign is a random-number generator with a coverage report.
 
@@ -263,7 +263,7 @@ The same conclusion, stated as a rule of thumb: fuzzing is productive when the t
 	\item syzkaller: github.com/google/syzkaller
 	\item kAFL: github.com/RUB-SysSec/kAFL
 	\item oss-fuzz: github.com/google/oss-fuzz
-	\item Miller et al, "An Empirical Study of the Reliability of UNIX Utilities", CACM 1990
+	\item Miller et al., ``An Empirical Study of the Reliability of UNIX Utilities'', CACM 1990
 	\item AFL++: github.com/AFLplusplus/AFLplusplus
 	\item FuzzBench and Magma: github.com/google/fuzzbench, github.com/HexHive/magma
 	\item Fuzzilli: github.com/googleprojectzero/fuzzilli

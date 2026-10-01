@@ -82,8 +82,8 @@ ok call: 0
 
 \section*{Exercise 3 --- Real Kernel Triage Drills (paper)}
 \begin{enumerate}
-    \item Pick any two CVEs from the android\_questions.txt surface list (\lstinline{binder}, \lstinline{ashmem}, \lstinline{ION}, GPU) and for each: the component, the fops/ioctl verb reached, the bug class per the lecture, the primitive granted, and the elevation mechanism (\lstinline{cred} overwrite, \lstinline{modprobe_path}, or shared-memory confusion).
-    \item Skill: connect the user-space crash hypothesis to a kernel primitive. Write both as the report pair (user-space symptom, kernel root cause) as described in the source auditing lecture's \textbf{From Bug to Report}.
+    \item Pick any two CVEs from the Android kernel surface list (\lstinline{binder}, \lstinline{ashmem}, \lstinline{ION}, GPU) and for each: the component, the fops/ioctl verb reached, the bug class per the lecture, the primitive granted, and the elevation mechanism (\lstinline{cred} overwrite, \lstinline{modprobe_path}, or shared-memory confusion).
+    \item Skill: connect the user-space crash hypothesis to a kernel primitive. Write both as the report pair (user-space symptom, kernel root cause): one paragraph naming the component, the missing check, the primitive, and the affected versions.
 \end{enumerate}
 
 \section*{Deliverables}

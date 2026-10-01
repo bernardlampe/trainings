@@ -2,9 +2,9 @@
 %        Author: Bernard Lampe
 %   Linux and Android security models lecture material
 %
-%   Expands the DAC/MAC bullet of the kernel lecture's driver-auditing
-%   section and android_questions.txt Question 4 (SELinux contexts) into
-%   the full trust model: credentials, capabilities, LSM/MAC, namespaces
+%   Expands the DAC/MAC bullet of kernel driver auditing and the
+%   SELinux question (contexts, xattrs, file systems) into the full
+%   trust model: credentials, capabilities, LSM/MAC, namespaces
 %   and seccomp on Linux; the UID sandbox, permission model, SELinux
 %   domains, Binder, and verified boot on Android.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -54,10 +54,7 @@
 
 \section*{Introduction}
 \begin{enumerate}
-    \item Every module so far prices a primitive against the mitigations that live \emph{inside} one process (the source auditing lecture's map: NX, canaries, ASLR, RELRO, CFI). This module prices the layer above: once you have code execution as \emph{some} process, what does the operating system still stop you from doing? That answer --- the trust model --- is the second half of every exploitability statement, and it is the half auditors most often hand-wave.
-    \item The framing that keeps this a vulnerability research module rather than an administration lecture: a security model bug is an \emph{authorization} bug. It needs no memory corruption at all. The confused deputy (Hardy, 1988) is the canonical shape --- a program with authority acts on a request whose relevant field the attacker controls --- and it is the model-level analogue of the source auditing lecture's trust-boundary bugs. An over-broad \lstinline{allow} rule, a permissive domain, a service that checks the wrong uid: each is a vulnerability that no fuzzer will find and no sanitizer will flag.
-    \item Scope: the Linux subject/object/operation model (credentials, capabilities, DAC), MAC and the LSM framework (SELinux, AppArmor, Smack), namespaces and containers, and seccomp-bpf; then Android's use of the same kernel machinery (per-app UIDs, the permission model, SELinux domains, Binder's kernel-attested identity, verified boot, FBE, and Keystore). The closing section is the audit method: where model bugs live, how to enumerate the model on a live target, and how to report one.
-    \item Cross-references: the kernel lecture already names the LSM hooks and states that neither DAC nor MAC is a bug boundary --- this module is that bullet expanded. android\_questions.txt Question 4 is the interview-grade SELinux half; Questions 1 and 6 list the surfaces these mechanisms are enforced on. The source auditing lecture's path-race and refcount-borrow sections are the memory-safety shadows of the check-vs-use bugs below.
+    \item Every exploitability analysis starts with the mitigations that live \emph{inside} one process (NX, canaries, ASLR, RELRO, CFI). This module covers the layer above: once you have code execution as \emph{some} process, what does the operating system still stop you from doing? That answer --- the OS trust model.
 \end{enumerate}
 
 \section*{The Reference Monitor and the Trust Model}
@@ -69,11 +66,13 @@
         \item \textbf{Object}: what is being reached. Linux: an inode (owner, mode, ACLs, xattr-carried label). Android: a file under \lstinline{/data/data/<pkg>} with an \lstinline{app_data_file} label, or a Binder service.
         \item \textbf{Operation}: read, write, execute, \lstinline{ioctl}, \lstinline{bind}, \lstinline{ptrace}, \lstinline{mount}, Binder transaction, and so on.
     \end{enumerate}
+    \item \textbf{Preventing explotation}. Model deficiencies / security bugs can be 1. patched, 2. mitigated, or 3. attack surface minimized. These are the primary mechanisms used by developers to fix models. Getting updates to systems can be politically complicated, and lead to patch gaps.
     \item \textbf{Mechanism versus policy}. The mechanism is code (VFS permission checks, LSM hooks, the Binder driver's checks, seccomp's filter interpreter). The policy is data (the SELinux binary policy, an AppArmor profile, an Android app's permission set, a seccomp filter program). Most real-world ``model bugs'' are policy bugs --- an over-broad rule, a permissive domain, a world-writable path --- and policy is configuration, so it ships unreviewed and unfuzzed.
     \item \textbf{Defense in depth} is the design principle Android leans on hardest, and the reason a single model bypass is usually not game over. It is also why the layers must be audited \emph{jointly}: the interesting bugs live at the seams (a uid boundary crossed by an fd handoff, a label check skipped for a shared-memory buffer).
     \item \textbf{Complete mediation} is the property to test first, on any target. Ask for each privileged operation: which single check implements it, and can the object change between the check and the operation? That question is the whole of the next section's bug catalogue.
     \item The three properties fail in practice in three named ways, and each failure is an audit method of its own: completeness fails through an unchecked second path to the same object (a second \lstinline{ioctl} entry, a second socket, a debugfs alias); tamperproofness fails through policy a governed subject can write (an over-broad \lstinline{allow}, a writable policy file, a world-writable device node); and verifiability fails through a mechanism too large to read (a BPF-LSM policy program, a driver's own permission check).
-    \item The one-sentence definition to carry: a memory-safety bug is a lie about memory, and a model bug is a lie about authority. The second lie needs no corruption, which is why no sanitizer, fuzzer, or decompiler will find it, and why it is audited by reading policy and by enumerating who can reach what.
+    \item The one-sentence definition to carry: a memory-safety bug is an inconsistency in memory, and a model bug is an inconsistency about authority.
+    \item The one-sentence definition to carry: a memory-safety bug is an inconsistency in memory, and a model bug is an inconsistency about authority.
 \end{enumerate}
 
 \section*{Linux: Subjects, Credentials, and DAC}
@@ -98,7 +97,7 @@
     \item The DAC details that show up in real bugs:
     \begin{enumerate}
         \item \textbf{umask applies at creation, not at use}: a file created 0666 under umask 022 is 0644 forever; the model question is what mode the \emph{creator} chose, not what the caller hoped for.
-        \item \textbf{Ownership, not path, is the boundary}: a privileged process writing to a path under attacker influence has the attacker's choice of object if the directory is attacker-writable --- the source auditing lecture's path-race section.
+        \item \textbf{Ownership, not path, is the boundary}: a privileged process writing to a path under attacker influence has the attacker's choice of object if the directory is attacker-writable --- the path-race bug class.
         \item \textbf{Mount options are policy too}: \lstinline{nosuid}, \lstinline{nodev}, \lstinline{noexec}, and the read-only remount are the cheap, blunt mitigations; a bind mount that re-enables \lstinline{suid} on a subtree is a model bug.
         \item \textbf{Special files}: a \lstinline{/dev} node's mode and label are the whole policy for that driver; \lstinline{/proc} and \lstinline{/sys} entries are often 0644 with privileged \emph{content}, so the write path's own checks are the only gate (\lstinline{kptr_restrict}, \lstinline{dmesg_restrict}, and the \lstinline{perf_event_paranoid} sysctls exist precisely because file mode was the wrong gate).
     \end{enumerate}
@@ -107,26 +106,26 @@
 \section*{Linux: Capabilities}
 \begin{enumerate}
     \item Root's authority is not one bit; it is a set of $\sim$40 capabilities, each guarding a family of operations. The sets on a task are \textbf{permitted} (the ceiling), \textbf{effective} (currently checked), \textbf{inheritable}, \textbf{bounding} (a hard ceiling across exec), and \textbf{ambient} (a newer set that lets a non-root binary keep capabilities across exec without file capabilities).
-    \item The capability table to know by heart for auditing (what each buys an attacker):
+    \item The capability table to know by heart for auditing (the authority each grants an attacker):
     \begin{center}
     \footnotesize
     \begin{tabular}{@{}ll@{}}
     \toprule
     \textbf{Capability} & \textbf{Authority} \\
     \midrule
-    \lstinline{CAP_DAC_OVERRIDE} & bypass file read/write/execute bits \\
-    \lstinline{CAP_DAC_READ_SEARCH} & bypass file read and directory search \\
-    \lstinline{CAP_FOWNER} & \lstinline{chmod}/\lstinline{chown} on others' files \\
-    \lstinline{CAP_SETUID}, \lstinline{CAP_SETGID} & assume any uid/gid; often the shortest path to root \\
-    \lstinline{CAP_SYS_PTRACE} & debug/inject any process (ties to the debugging module) \\
-    \lstinline{CAP_SYS_ADMIN} & mount, \lstinline{unshare}, many driver ioctls --- the de facto root \\
-    \lstinline{CAP_SYS_MODULE} & load kernel code (ties to the kernel lecture) \\
-    \lstinline{CAP_NET_ADMIN}, \lstinline{CAP_NET_RAW} & configure interfaces; sniff/spoof \\
-    \lstinline{CAP_SYS_CHROOT}, \lstinline{CAP_SYS_TIME} & chroot escape; clock manipulation \\
+    \lstinline|CAP_DAC_OVERRIDE| & bypass file read/write/execute bits \\
+    \lstinline|CAP_DAC_READ_SEARCH| & bypass file read and directory search \\
+    \lstinline|CAP_FOWNER| & \lstinline|chmod|/\lstinline|chown| on others' files \\
+    \lstinline|CAP_SETUID|, \lstinline|CAP_SETGID| & assume any uid/gid; often the shortest path to root \\
+    \lstinline|CAP_SYS_PTRACE| & debug/inject any process \\
+    \lstinline|CAP_SYS_ADMIN| & mount, \lstinline|unshare|, many driver ioctls --- the de facto root \\
+    \lstinline|CAP_SYS_MODULE| & load kernel code \\
+    \lstinline|CAP_NET_ADMIN|, \lstinline|CAP_NET_RAW| & configure interfaces; sniff/spoof \\
+    \lstinline|CAP_SYS_CHROOT|, \lstinline|CAP_SYS_TIME| & chroot escape; clock manipulation \\
     \bottomrule
     \end{tabular}
     \end{center}
-    \item Checks are \lstinline{capable(CAP_X)} (initial user namespace) and \lstinline{ns_capable(ns, CAP_X)} (a specific namespace). The namespaced form is the reason a user namespace is a privilege boundary in itself: \lstinline{CAP_NET_ADMIN} inside your own netns is real authority over that namespace, and a bug reachable from there is a kernel bug the kernel lecture cares about.
+    \item Checks are \lstinline{capable(CAP_X)} (initial user namespace) and \lstinline{ns_capable(ns, CAP_X)} (a specific namespace). The namespaced form is the reason a user namespace is a privilege boundary in itself: \lstinline{CAP_NET_ADMIN} inside your own netns is real authority over that namespace, and a bug reachable from there is a kernel bug.
     \item Two privilege transitions to audit, both of which produce retained authority when done incompletely:
     \begin{enumerate}
         \item \textbf{setuid-root binaries}: the exec sets euid 0 and the permitted set to full; the program must drop deliberately, and \lstinline{PR_SET_NO_NEW_PRIVS} is what stops a later \lstinline{execve} from re-raising privilege.
@@ -137,11 +136,11 @@
 
 \section*{Linux: MAC and the LSM Framework}
 \begin{enumerate}
-    \item The kernel exposes one hook list for all security modules: \lstinline{include/linux/lsm_hooks.h}, called from \lstinline{security/security.c} at the chokepoints. Android's own summary of this is android\_questions.txt Question 4: MAC ``enforced at syscall gateways and other kernel chokepoints''.
+    \item The kernel exposes one hook list for all security modules: \lstinline{include/linux/lsm_hooks.h}, called from \lstinline{security/security.c} at the chokepoints --- enforced at syscall gateways and other kernel chokepoints.
     \item Hooks that matter to a VR audit, with what they gate:
     \begin{enumerate}
         \item \lstinline{inode_permission}, \lstinline{inode_create}, \lstinline{inode_unlink}: the file DAC/MAC pair.
-        \item \lstinline{file_open}, \lstinline{file_ioctl}, \lstinline{file_mmap}, \lstinline{file_receive}: the driver surface from the kernel lecture, gated per verb.
+        \item \lstinline{file_open}, \lstinline{file_ioctl}, \lstinline{file_mmap}, \lstinline{file_receive}: the driver surface, gated per verb.
         \item \lstinline{mmap_file}, \lstinline{file_mprotect}: executable mappings, the W$\oplus$X gate.
         \item \lstinline{task_kill}, \lstinline{ptrace_access_check}, \lstinline{task_prctl}: process control.
         \item \lstinline{socket_bind}, \lstinline{socket_connect}, \lstinline{socket_sendmsg}: network labelling.
@@ -151,7 +150,7 @@
     \begin{enumerate}
         \item \textbf{SELinux}: label-based, type enforcement, complete mediation. A subject label is \lstinline{user:role:type:level}; the policy grants \lstinline{allow} rules between types; \lstinline{type_transition} (Android: \lstinline{domain_auto_trans}) assigns the label of a process at \lstinline{exec}. Per-domain \lstinline{permissive} flags and booleans exist, and \lstinline{neverallow} rules are compile-time invariants checked when the policy is built.
         \item \textbf{AppArmor}: path-based, per-program profiles, \lstinline{complain} (log-only) versus \lstinline{enforce} mode. Weaker against path races and hardlinks by construction; easier to read.
-        \item \textbf{Smack} and \lstinline{TOMOYO}: label-based and path-based respectively; rarer, but they show up in embedded and IoT firmware, which is where the binary RE module sends you.
+        \item \textbf{Smack} and \lstinline{TOMOYO}: label-based and path-based respectively; rarer, but they show up in embedded and IoT firmware.
         \item \textbf{BPF-LSM}: the newer dynamic module; policy is a BPF program, so the policy is now code with its own memory-safety bug class.
     \end{enumerate}
     \item Where the code lives: \lstinline{security/security.c} (hook caller), \lstinline{security/selinux/hooks.c} (the SELinux implementations, e.g.\ \lstinline{selinux_inode_permission}), \lstinline{security/apparmor/}, and the policy in \lstinline{system/sepolicy} plus \lstinline{device/*/sepolicy} on Android.
@@ -173,13 +172,13 @@
     \toprule
     \textbf{Namespace} & \textbf{Isolates} \\
     \midrule
-    \lstinline{mnt} & mount table (what paths exist) \\
-    \lstinline{pid} & process id space (what can be seen/killed) \\
-    \lstinline{net} & interfaces, routes, iptables, sockets \\
-    \lstinline{ipc} & SysV/POSIX message queues, shared memory \\
-    \lstinline{uts} & hostname and domain name \\
-    \lstinline{user} & uid/gid mapping, capability scope \\
-    \lstinline{cgroup} & cgroup view; \lstinline{time} (5.6+) clock offsets \\
+    \lstinline|mnt| & mount table (what paths exist) \\
+    \lstinline|pid| & process id space (what can be seen/killed) \\
+    \lstinline|net| & interfaces, routes, iptables, sockets \\
+    \lstinline|ipc| & SysV/POSIX message queues, shared memory \\
+    \lstinline|uts| & hostname and domain name \\
+    \lstinline|user| & uid/gid mapping, capability scope \\
+    \lstinline|cgroup| & cgroup view; \lstinline|time| (5.6+) clock offsets \\
     \bottomrule
     \end{tabular}
     \end{center}
@@ -188,17 +187,17 @@
     \begin{enumerate}
         \item a mounted host path (the runtime's own socket, \lstinline{/proc}, a device node) inside the container;
         \item \lstinline{CAP_SYS_ADMIN} retained in the container's user namespace, plus a filesystem or driver bug reachable from it;
-        \item a leaked host file descriptor (the source auditing lecture's fd-lifetime bug, at model level);
-        \item the shared kernel itself: namespaces do not change that all containers run one kernel, so the kernel lecture's surface is the container's surface too.
+        \item a leaked host file descriptor (an fd-lifetime bug, at model level);
+        \item the shared kernel itself: namespaces do not change that all containers run one kernel, so the kernel attack surface is the container's surface too.
     \end{enumerate}
     \item \textbf{seccomp-bpf} is an allowlist at the syscall boundary: a BPF program over \lstinline{struct seccomp_data} decides per syscall. The fields are \lstinline{nr}, \lstinline{arch}, \lstinline{instruction_pointer}, and six raw \lstinline{args}.
     \begin{enumerate}
         \item Actions: \lstinline{SECCOMP_RET_KILL_THREAD}/\lstinline{KILL_PROCESS}, \lstinline{TRAP}, \lstinline{ERRNO}, \lstinline{TRACE}, \lstinline{LOG}, \lstinline{ALLOW}. A default of \lstinline{ALLOW} with a blocklist is the wrong shape: the correct model is default-deny with an explicit allow list.
         \item The filter sees \emph{values}, not pointees. An argument check on a pointer argument (a path, a buffer) validates the pointer, not the bytes; the kernel copies after the filter runs. That is a check-vs-use window by construction, not a bug.
         \item The filter must check \lstinline{arch}: without it, a 32-bit process on an x86-64 kernel can invoke the x86-32 syscall with the same number as a blocked x86-64 one. The syscall-number tables differ between architectures, so an \lstinline{nr}-only filter is bypassable.
-        \item \lstinline{SECCOMP_RET_TRACE} hands control to a tracer, and the tracer's own checks become part of the model (the debugging module's ptrace substrate). \lstinline{no_new_privs} is required for filter installation by unprivileged processes precisely so that a filter cannot be outlived by a setuid transition.
+        \item \lstinline{SECCOMP_RET_TRACE} hands control to a tracer, and the tracer's own checks become part of the model (the ptrace substrate). \lstinline{no_new_privs} is required for filter installation by unprivileged processes precisely so that a filter cannot be outlived by a setuid transition.
     \end{enumerate}
-    \item \textbf{Landlock} (5.13+) and \textbf{Yama} (\lstinline{ptrace_scope}) are the newer unprivileged-facing LSMs; Yama's sysctl is the reason a non-root attacker cannot simply attach to a sibling process --- relevant to every remote-attach workflow in the debugging module.
+    \item \textbf{Landlock} (5.13+) and \textbf{Yama} (\lstinline{ptrace_scope}) are the newer unprivileged-facing LSMs; Yama's sysctl is the reason a non-root attacker cannot simply attach to a sibling process --- relevant to every remote-attach workflow.
     \item Enumeration: \lstinline{seccomp-tools} dumps a filter, \lstinline{/proc/<pid>/status} reports the mode, and \lstinline{bpftrace} can watch its decisions. The recipes are collected in \textbf{Enumerating the Model} below. The filter program itself is attacker-relevant \emph{policy}: read it before assuming the sandbox is complete.
 \end{enumerate}
 
@@ -214,7 +213,7 @@
     \item The permission model in detail, because most Android model bugs live here:
     \begin{enumerate}
         \item \textbf{Protection levels}: \lstinline{normal} (granted at install, no prompt), \lstinline{dangerous} (runtime prompt, revocable), \lstinline{signature} (only same-signer apps), \lstinline{signatureOrSystem} (deprecated), \lstinline{privileged} (only \lstinline{/system/priv-app}). The level determines who can hold the permission at all.
-        \item \textbf{Runtime permissions} (Android 6+): a \lstinline{dangerous} permission is granted or revoked per-app at runtime; the app must handle revocation mid-run. Model consequence: \lstinline{checkPermission} results are \emph{state}, and state changes --- the source auditing lecture's check-vs-use shape again.
+        \item \textbf{Runtime permissions} (Android 6+): a \lstinline{dangerous} permission is granted or revoked per-app at runtime; the app must handle revocation mid-run. Model consequence: \lstinline{checkPermission} results are \emph{state}, and state changes --- the check-vs-use shape again.
         \item \textbf{Enforcement point}: framework code calls \lstinline{checkCallingPermission()} (or its \lstinline{enforce} variant), which resolves through \lstinline{ActivityManager} using the caller's \lstinline{uid} from the Binder transaction. The audit question is always: which uid did this check use?
         \item \textbf{The ``or self'' footgun}: \lstinline{checkCallingOrSelfPermission()} checks the caller \emph{or the calling process's own permission}.
         \begin{enumerate}
@@ -248,9 +247,9 @@
         \item A transaction carries a kernel-attested sender uid/pid (\lstinline{binder_get_calling_uid}) --- services are supposed to use it and never a uid from the parcel.
         \item SELinux gates Binder itself: \lstinline{binder_use} (may a domain use Binder at all), \lstinline{binder_call} (domain $\to$ domain, i.e.\ may this app call this service), and \lstinline{binder_transfer} (may this domain receive this class of fd over Binder --- the check that makes fd-passing grants safe).
         \item \lstinline{servicemanager} is the lookup broker and is itself labelled; \lstinline{service_manager} checks \lstinline{add}/\lstinline{find} per domain, so the set of services an app can even \emph{name} is policy.
-        \item Audit recipes: \lstinline{service list}, \lstinline{dumpsys -l}, \lstinline{dumpsys activity services}, and the SELinux side with \lstinline{ls -Z} on the service's own files and \lstinline{ps -AZ} for domains. The kernel-side bugs in the Binder driver itself are the kernel lecture's surface (CVE-2019-2215 from android\_questions.txt is a Binder UAF): the model decides \emph{who may call}; the driver's parser decides \emph{what the bytes do}.
+        \item Audit recipes: \lstinline{service list}, \lstinline{dumpsys -l}, \lstinline{dumpsys activity services}, and the SELinux side with \lstinline{ls -Z} on the service's own files and \lstinline{ps -AZ} for domains. The kernel-side bugs in the Binder driver itself are ordinary kernel attack surface (CVE-2019-2215 is a Binder UAF): the model decides \emph{who may call}; the driver's parser decides \emph{what the bytes do}.
     \end{enumerate}
-    \item The vendor/system boundary (Treble) is a model boundary: \lstinline{vndbinder} separates vendor services from framework services, and the policy is split into \lstinline{system} and \lstinline{vendor} parts that may not be merged. Vendor HALs are written by the SoC vendor, ship in the vendor image, and are reachable from the framework --- which makes them the Android equivalent of the kernel lecture's vendor drivers.
+    \item The vendor/system boundary (Treble) is a model boundary: \lstinline{vndbinder} separates vendor services from framework services, and the policy is split into \lstinline{system} and \lstinline{vendor} parts that may not be merged. Vendor HALs are written by the SoC vendor, ship in the vendor image, and are reachable from the framework --- which makes them the Android equivalent of vendor drivers in a kernel.
 \end{enumerate}
 
 \section*{Android: Verified Boot, Encryption, and Keystore}
@@ -258,13 +257,13 @@
     \item \textbf{Verified boot} (AVB2.0): a chain of hash/signature verification from the hardware root of trust (boot ROM, keyed by e-fuses) through the bootloader, \lstinline{vbmeta}, \lstinline{boot}, \lstinline{system}, and \lstinline{vendor}. \lstinline{dm-verity} enforces the integrity of the read-only partitions at block level with a Merkle tree, so a modified block fails verification on read.
     \begin{enumerate}
         \item Boot states: \lstinline{green} (locked, verified), \lstinline{yellow} (locked, custom key), \lstinline{orange} (unlocked), \lstinline{red} (verification failed). Readable as \lstinline{ro.boot.verifiedbootstate} and \lstinline{ro.boot.flash.locked}.
-        \item Model consequence: an unlocked bootloader is a model bypass, not a bug --- it lets you replace the \emph{policy} (a permissive SELinux build, an \lstinline{su} domain, a modified \lstinline{init.rc}). This is exactly the rooting walkthrough in android\_questions.txt Questions 4--5, and why \lstinline{adb disable-verity} requires an unlocked bootloader.
+        \item Model consequence: an unlocked bootloader is a model bypass, not a bug --- it lets you replace the \emph{policy} (a permissive SELinux build, an \lstinline{su} domain, a modified \lstinline{init.rc}). This is exactly what the rooting walkthrough does, and why \lstinline{adb disable-verity} requires an unlocked bootloader.
         \item Rollback protection: the rollback index in \lstinline{vbmeta} plus anti-rollback fuses prevent installing an older, vulnerable image. Downgrade is a model attack with its own name because the model assumes the patch cannot be undone.
     \end{enumerate}
     \item \textbf{File-based encryption}: device-encrypted (DE) storage is available before unlock, credential-encrypted (CE) storage needs the user credential; \lstinline{vold} and the kernel's \lstinline{fscrypt} manage the keys, which live in the TEE. The model question: which data is readable at which boot stage, and what does an offline attacker with the flash chip get.
     \item \textbf{Keystore/Keymaster/StrongBox}: app keys are stored in the TEE (TrustZone) or a secure element and never leave it; the app gets an opaque handle and asks the service to sign/decrypt. Consequences:
     \begin{enumerate}
-        \item The key is not extractable by design, so the attack surface is the \emph{service interface and its callers}, not the key material. Trustlets and TEE drivers are the model's own attack surface (android\_questions.txt Question 1 lists them), and the kernel lecture's vendor-driver discipline applies to them.
+        \item The key is not extractable by design, so the attack surface is the \emph{service interface and its callers}, not the key material. Trustlets and TEE drivers are the model's own attack surface, and the vendor-driver audit discipline applies to them.
         \item Attestation binds a key to a device state; an attacker who can influence the attestation (a compromised TEE, a patched boot state) defeats a model that trusts it.
         \item Key destruction semantics are part of the model: a key that survives a factory reset, or a key that is backed up, is a persistence primitive.
     \end{enumerate}
@@ -275,7 +274,7 @@
 \begin{enumerate}
     \item Model bugs fall into three families, and they need different audit methods:
     \begin{enumerate}
-        \item \textbf{Enforcement-code bugs}: memory-safety bugs in the code that implements the model (the LSM hook implementations, the Binder driver, the permission-check helpers, the seccomp filter verifier). These are the source auditing lecture's bug patterns, at a chokepoint. High value because the chokepoint runs with authority.
+        \item \textbf{Enforcement-code bugs}: memory-safety bugs in the code that implements the model (the LSM hook implementations, the Binder driver, the permission-check helpers, the seccomp filter verifier). These are ordinary memory-safety bug patterns, at a chokepoint. High value because the chokepoint runs with authority.
         \item \textbf{Policy bugs}: an over-broad \lstinline{allow}, a permissive domain, a world-writable file, a \lstinline{signatureOrSystem} permission, a \lstinline{checkCallingOrSelfPermission} misuse, a seccomp default-allow. No sanitizer will find these. Audit method: read the policy as data, diff it against the AOSP baseline, and ask what the widest reachable access is.
         \item \textbf{Seam bugs}: the interfaces between layers, where each layer believes the other enforced the rule. The Binder uid, the passed file descriptor, the shared buffer, the label derived from a uid, the grant that outlives the check. This is where the confused deputy lives.
     \end{enumerate}
@@ -283,9 +282,9 @@
     \begin{enumerate}
         \item Who is the deputy, and what authority does it hold that the client does not?
         \item Which part of the request is attacker-controlled (a path, a uid, a flag, a buffer, a handle)?
-        \item Does the check apply to the same object the operation uses? If the object is named twice, or resolved twice, it is a check-vs-use bug (the source auditing lecture's path races, in authorization form).
+        \item Does the check apply to the same object the operation uses? If the object is named twice, or resolved twice, it is a check-vs-use bug (a path race, in authorization form).
         \item Is the identity the kernel-attested one (\lstinline{Binder.getCallingUid()}, \lstinline{SO_PEERCRED}) or a value the client supplied?
-        \item What is the worst operation the deputy can be made to perform, and on which object? That pair is the primitive, and it is priced exactly like a memory-corruption primitive: what does it grant, and what must the attacker control to reach it.
+        \item What is the worst operation the deputy can be made to perform, and on which object? That pair is the primitive, and it is assessed exactly like a memory-corruption primitive: what does it grant, and what must the attacker control to reach it.
     \end{enumerate}
     \item Enumeration recipes to keep in the notes. All of them are read-only, and all of them are how you establish the model on a target:
     \begin{sectionbox}
@@ -310,34 +309,25 @@ su -c cat /proc/self/attr/current
     \end{lstlisting}
     \end{sectionbox}
     \item Diff two devices' policies before assuming a behaviour is intended.
-    \item The audit-queue rule from the kernel lecture, restated for policy: mainline policy is reviewed and its \lstinline{neverallow} invariants are checked at build time; vendor and OEM policy is neither, so the first question about any surprising \lstinline{allow} is ``which vendor added it, and what did that vendor's other code need it for?''
-    \item Reporting a model bug uses the same shape as the source auditing lecture's \textbf{From Bug to Report}: the subject and its authority, the object and its intended rule, the enforced rule, the bypass, and the primitive. The difference is that the ``reproducer'' is a sequence of operations with identities (an app calling a service, a process reaching a node), not a malformed file.
+    \item The audit-queue rule, restated for policy: mainline policy is reviewed and its \lstinline{neverallow} invariants are checked at build time; vendor and OEM policy is neither, so the first question about any surprising \lstinline{allow} is ``which vendor added it, and what did that vendor's other code need it for?''
+    \item Reporting a model bug uses the standard report shape: the subject and its authority, the object and its intended rule, the enforced rule, the bypass, and the primitive. The difference is that the ``reproducer'' is a sequence of operations with identities (an app calling a service, a process reaching a node), not a malformed file.
     \item A short worked example, to fix the shape. Android \lstinline{system_server} runs in its own domain with broad authority and is called by every app. Suppose a service it exposes performs \lstinline{checkCallingOrSelfPermission(P)} before writing a caller-supplied path. The subject is the app, the deputy is \lstinline{system_server}, the object is any file the deputy can write, the intended rule is ``only a caller holding P may cause the write'', and the enforced rule is ``any caller may cause the write'' because \lstinline{OrSelf} grants the deputy's own permission to every caller. The primitive is an arbitrary-file-write as \lstinline{system_server}; the policy that should have caught it is the SELinux \lstinline{allow} for the service's domain, which is irrelevant here because the write happens with the deputy's authority, not the caller's. That is the whole lesson of the confused deputy in one paragraph: \emph{the MAC layer does not save a service that checks the wrong subject}.
     \item Public examples worth naming, one per family:
     \begin{enumerate}
-        \item Enforcement-code bugs: the Binder driver's own use-after-free (CVE-2019-2215 in android\_questions.txt), the futex requeue bug (CVE-2014-3153), Dirty COW (CVE-2016-5195), and the recurring \lstinline{io_uring} and netfilter lifetime bugs. These are audited exactly like any other memory-safety bug.
+        \item Enforcement-code bugs: the Binder driver's own use-after-free (CVE-2019-2215), the futex requeue bug (CVE-2014-3153), Dirty COW (CVE-2016-5195), and the recurring \lstinline{io_uring} and netfilter lifetime bugs. These are audited exactly like any other memory-safety bug.
         \item Policy bugs: shipped permissive domains, \lstinline{signatureOrSystem} permissions, world-writable device nodes, and vendor \lstinline{allow} rules added for a single app. These are found by reading policy as data, not by fuzzing.
         \item Seam bugs: the confused deputy family (a service acting on a caller-supplied path), an fd-passing grant that outlives the check, and an Android \lstinline{checkCallingOrSelfPermission} misuse. These are found by enumerating the interfaces between layers.
     \end{enumerate}
-    \item Reporting a model bug adds one paragraph to the source auditing lecture's report format: \emph{which layer was supposed to enforce the rule, which layer actually did, and what the difference grants}. The reproducer is a sequence of operations with identities, and the exploitability statement prices the primitive against the other layers that still stand.
-\end{enumerate}
-
-\section*{How This Module Maps to the Course}
-\begin{enumerate}
-    \item The kernel lecture's driver section names DAC and MAC and the LSM hooks; this module is that bullet's implementation detail, and it is the vocabulary the kernel lecture assumes when it says a driver reachable by a labelled process is reachable.
-    \item android\_questions.txt Question 4 is the interview-grade summary of the SELinux half; Questions 1 and 6 are the surface lists whose reachability this module explains, and Questions 4--5 are the rooting walkthrough that this module's verified-boot section explains as a model bypass.
-    \item The source auditing lecture's path races and refcount-borrow sections reappear here as check-vs-use and identity-confusion model bugs; the mitigation map prices a primitive \emph{inside} a process, and this module prices what that process may then reach.
-    \item The debugging module's remote-attach workflows are gated by the same model: Yama's \lstinline{ptrace_scope} is the Linux default, \lstinline{CAP_SYS_PTRACE} is the root path, and \lstinline{android:debuggable} plus \lstinline{run-as} is the Android form. A failed attach is usually a model question, not a debugger question.
+    \item Reporting a model bug adds one paragraph to the standard report format: \emph{which layer was supposed to enforce the rule, which layer actually did, and what the difference grants}. The reproducer is a sequence of operations with identities, and the exploitability statement assesses the primitive against the other layers that still stand.
 \end{enumerate}
 
 \section*{Conclusion}
-The security model is the price list above the process. The source auditing lecture's map answers ``what does this memory bug buy inside my process?''; this module answers ``what may that process do next, and who will let it?'' Two rules to leave with. First, enforcement bugs are memory-safety bugs at a chokepoint and are audited like any other code; policy bugs are data bugs that no fuzzer will find and must be read. Second, every model has a deputy, every deputy has a check, and the interesting question is always whether the check and the operation use the same identity and the same object.
+The security model is the layer above the process. The mitigation map answers ``what does this memory bug grant inside my process?''; this module answers ``what may that process do next, and who will let it?'' Two rules to leave with. First, enforcement bugs are memory-safety bugs at a chokepoint and are audited like any other code; policy bugs are data bugs that no fuzzer will find and must be read. Second, every model has a deputy, every deputy has a check, and the interesting question is always whether the check and the operation use the same identity and the same object.
 
 The module in one sentence: enumerate the layers (uid sandbox, SELinux, permissions, verified boot, FBE, Keystore on Android; DAC, capabilities, LSM, namespaces, seccomp on Linux), read the policy as data, and then ask for every privileged operation which layer was supposed to stop it and which layer actually did. The gap between those two answers is the finding.
 
 \section*{References}
 \begin{enumerate}
-	\item android\_questions.txt in this repo (Question 4: SELinux contexts; Questions 1, 4--6: surfaces and rooting)
 	\item ``The Confused Deputy'', Norm Hardy, ACM SIGOPS 1988
 	\item Linux man pages: capabilities(7), user\_namespaces(7), namespaces(7), seccomp(2), ptrace(2), mount(2)
 	\item Documentation/userspace-api/seccomp\_filter.rst and Documentation/security/lsm.rst (kernel.org)
@@ -345,7 +335,6 @@ The module in one sentence: enumerate the layers (uid sandbox, SELinux, permissi
 	\item Android Security documentation (source.android.com/security): sandbox, permissions, SELinux, verified boot, FBE, Keystore
 	\item Android Security Internals, Nikolay Elenkov (the Android model from the inside)
 	\item AOSP \lstinline{system/sepolicy} and \lstinline{frameworks/base} sources (android.googlesource.com)
-	\item The kernel lecture and its references for the driver-side view of these hooks.
 	\item setools (seinfo, sesearch, sediff) and audit2allow for reading and diffing a policy as data
 	\item Kernel Self Protection Project hardening recommendations (kspp) for the Linux-side defaults
 \end{enumerate}

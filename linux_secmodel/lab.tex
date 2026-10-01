@@ -60,7 +60,7 @@ clang -g -O0 -Wall -Wextra model_deputy.c -o model_deputy
     \begin{enumerate}
         \item \textbf{incomplete mediation}: the MAC arm returns on the first rule whose domain matches and never consults the target's label, so every target inherits the first rule's verdict (a policy bug, not a memory-safety bug);
         \item \textbf{identity not attested}: the subject is built from the client-claimed uid/domain in the request rather than from the attested subject --- the confused deputy's defining mistake;
-        \item \textbf{check-then-use}: the path is resolved once for the check and again for the operation, so the object checked need not be the object used (the source auditing lecture's path race, in authorization form).
+        \item \textbf{check-then-use}: the path is resolved once for the check and again for the operation, so the object checked need not be the object used (a path race, in authorization form).
     \end{enumerate}
     \item For each bug: which lecture family is it (enforcement-code, policy, or seam), and what must the attacker control to reach it?
 \end{enumerate}
@@ -88,7 +88,7 @@ swap:        check=0 followed=0
     \midrule
     ok & 0 & 0 & --- \\
     forged uid & 0 & $-2$ & DAC (uid 10001 is not owner 10002, no other bits) \\
-    wrong label & 0 & $-3$ & MAC (\lstinline{untrusted_app} may not write \lstinline{system_data_file}) \\
+    wrong label & 0 & $-3$ & MAC (\lstinline|untrusted_app| may not write \lstinline|system_data_file|) \\
     swap & 0 & 0 & --- (but the use must act on the object the check approved) \\
     \bottomrule
     \end{tabular}
@@ -114,19 +114,19 @@ swap:        check=0 followed=0
     \toprule
     \textbf{Operation} & \textbf{Denying layer} & \textbf{Recipe} \\
     \midrule
-    read another user's 0600 file & DAC & \lstinline{ls -l}, then read it as that user \\
-    write a file you do not own & DAC & \lstinline{ls -l}; compare owner and mode \\
-    read \lstinline{/etc/shadow} & DAC & \lstinline{ls -l /etc/shadow} \\
-    attach to a sibling process & Yama LSM & \lstinline{cat /proc/sys/kernel/yama/ptrace_scope} \\
-    bind a port below 1024 & capability & \lstinline{capsh --print}; \lstinline{getcap} \\
-    mount a filesystem & capability & \lstinline{unshare -Ur -m id}, then mount \\
-    write a \lstinline{/proc/sys} knob & MAC/DAC & \lstinline{ls -Z}, then write it \\
-    read a file its label forbids & SELinux & \lstinline{ls -Z}; \lstinline{ps -eZ} \\
+    read another user's 0600 file & DAC & \lstinline|ls -l|, then read it as that user \\
+    write a file you do not own & DAC & \lstinline|ls -l|; compare owner and mode \\
+    read \lstinline|/etc/shadow| & DAC & \lstinline|ls -l /etc/shadow| \\
+    attach to a sibling process & Yama LSM & \lstinline|cat /proc/sys/kernel/yama/ptrace_scope| \\
+    bind a port below 1024 & capability & \lstinline|capsh --print|; \lstinline|getcap| \\
+    mount a filesystem & capability & \lstinline|unshare -Ur -m id|, then mount \\
+    write a \lstinline|/proc/sys| knob & MAC/DAC & \lstinline|ls -Z|, then write it \\
+    read a file its label forbids & SELinux & \lstinline|ls -Z|; \lstinline|ps -eZ| \\
     \bottomrule
     \end{tabular}
     \end{center}
     \item For two rows of the table, produce the actual denial. SELinux hosts log it; find it with \lstinline{ausearch -m avc} (or the kernel log), then run \lstinline{audit2allow -a} on the denial and read the \lstinline{allow} rule it prints.
-    \item For each of those two denials, answer the model questions: which subject, which object, which operation, which rule \emph{should} apply, and why the printed rule is over-broad. This is the policy-bug report in the lecture's \textbf{From Bug to Report} shape.
+    \item For each of those two denials, answer the model questions: which subject, which object, which operation, which rule \emph{should} apply, and why the printed rule is over-broad. This is the policy-bug report in the lecture's report shape: subject, object, operation, intended rule, enforced rule, primitive.
     \item Pick one service domain that is permitted to act for a caller (a system service on the host, or \lstinline{system_server} on a device) and write its confused-deputy checklist answers from the lecture: the deputy, its authority, the attacker-controlled part of the request, and whether the check and the use name the same object.
 \end{enumerate}
 

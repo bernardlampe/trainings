@@ -45,18 +45,20 @@
 
 \section*{Setup}
 \begin{enumerate}
-    \item Reuse two verified targets from earlier labs:
+    \item This lab uses two small deliberately vulnerable targets, both included in this module:
     \begin{itemize}
-        \item \lstinline{source_auditing/heap.c} (string store; UAF on double DELETE)
-        \item \lstinline{fuzzing/targets/lab_target.c} + \lstinline{harness.c} + \lstinline{main.c} (CKS parser; stack overflow at \lstinline{lab_target.c:46})
+        \item \lstinline{heap.c} (string store; UAF on double DELETE)
+        \item \lstinline{targets/lab_target.c} + \lstinline{targets/harness.c} + \lstinline{targets/main.c} (CKS parser; stack overflow at \lstinline{lab_target.c:46})
     \end{itemize}
-    Build both plain (no sanitizer) --- this lab observes the \emph{unsanitized} program:
+    Build both without sanitizers --- this lab observes the \emph{unsanitized} program --- plus an ASan variant for the lecture's case study:
     \begin{lstlisting}[language=bash]
-clang -g -O0 ../../source_auditing/heap.c -o heap_plain
-clang -g -O0 lab_target.c harness.c main.c -o lab_plain
+clang -g -O0 heap.c -o heap_plain
+clang -g -O0 targets/lab_target.c targets/harness.c targets/main.c -o lab_plain
+clang -g -O1 -fsanitize=address \
+      targets/lab_target.c targets/harness.c targets/main.c -o lab_target_asan
     \end{lstlisting}
-    \item Debugger on this reference host is \lstinline{lldb}; gdb commands are given in comments where they differ.
-    \item Also prepare the fuzzing-lab seeds (\lstinline{seed_over}, the CREATE/DELETE driver from the source auditing lab Exercise A).
+    \item The debugger on this reference host is \lstinline{lldb}; gdb commands are given in comments where they differ.
+    \item Also prepare the provided seed files from \lstinline{targets/} (\lstinline{seed_over}, plus a four-command driver for \lstinline{heap.c}: CREATE ``A'', CREATE ``B'', DELETE ``A'', DELETE ``A'').
 \end{enumerate}
 
 \section*{Exercise 1 --- Watchpoint Data Tracing}
@@ -78,14 +80,14 @@ watch *(char*)<addr>
     \end{lstlisting}
     \item Observed result (verified): the plain SDK build emits \lstinline{__memcpy_chk} (FORTIFY); the program aborts inside \lstinline{__chk_fail_overflow} (exit 133, 5/5 runs) with backtrace \lstinline{__memcpy_chk <- lab_parse:46} --- the aimed-for write never happens on this build.
     \item Rebuild with \lstinline{clang -g -O0 -D_FORTIFY_SOURCE=0 ...} and redo the watchpoint: now it fires on the genuine first OOB write, and the three facts a reporter must state can be read off the stopped frame (length, source, destination registers at the \lstinline{memcpy} call).
-    \item Lesson recorded live: FORTIFY is a mitigation arm from the lecture's map --- it \emph{moves} the crash from your watchpoint address into libc's check. Which build reveals the bug, and which merely reports it after the fact?
+    \item Lesson recorded live: FORTIFY is a mitigation arm in its own right --- it \emph{moves} the crash from your watchpoint address into libc's check. Which build reveals the bug, and which merely reports it after the fact?
 \end{enumerate}
 
 \section*{Exercise 2 --- Confirm the UAF Without ASan}
 \begin{enumerate}
-    \item Apply the source-auditing lab Exercise A change to the driver (CREATE "A", CREATE "B", DELETE "A", DELETE "A") and rebuild \lstinline{heap_plain}. Verified: it still exits 0 without a sanitizer --- this is why the debugger, not the exit status, is the instrument.
+    \item Modify \lstinline{heap.c}'s \lstinline{main()} to run CREATE ``A'', CREATE ``B'', DELETE ``A'', DELETE ``A'' and rebuild \lstinline{heap_plain}. Verified: it still exits 0 without a sanitizer --- this is why the debugger, not the exit status, is the instrument.
     \item In lldb, print the slot pointer (\lstinline{p g_strs[0]}) before and after the first \lstinline{free()}: verified on the reference build, it reads \lstinline{"A"} before and \lstinline{"\\x90\\x11"} after --- allocator freelist bookkeeping overwrote the string in place while the pointer stayed live in \lstinline{g_strs}.
-    \item Set a watchpoint on the freed block's first bytes and confirm: the second DELETE's \lstinline{find()} reads the corrupted (freed) memory before the second \lstinline{free()} even happens. This converts the source-auditing lab's ASan observation into instruction-level proof.
+    \item Set a watchpoint on the freed block's first bytes and confirm: the second DELETE's \lstinline{find()} reads the corrupted (freed) memory before the second \lstinline{free()} even happens. This converts an ASan report of the same bug into instruction-level proof.
 \end{enumerate}
 
 \section*{Exercise 3 --- Breakpoint Script as an API Tracer}
@@ -100,12 +102,12 @@ watch *(char*)<addr>
 > DONE
     \end{lstlisting}
     \item Run the four-command driver: the trace is the program's API history without source-level printf patching.
-    \item Do the same for \lstinline{lab_parse}: print \lstinline{size} and the checksum argument of each hit. Count hits over a fuzz run: what is the gate-passing rate? (Compare with the fuzzing lab Exercise 1 numbers.)
+    \item Do the same for \lstinline{lab_parse}: print \lstinline{size} and the checksum argument of each hit. Count hits over a fuzz run: what is the gate-passing rate?
 \end{enumerate}
 
 \section*{Exercise 4 --- The Debugger Answers the Fuzzer}
 \begin{enumerate}
-    \item Take your minimized crasher from the fuzzing lab Exercise 3 and confirm it in a no-sanitizer build under the debugger. Verified on the reference build: the SDK-default build aborts (SIGABRT, exit 133, inside \lstinline{__memcpy_chk}); the \lstinline{-D_FORTIFY_SOURCE=0} build dies by SIGABRT (exit 134, 3/3 runs) via stack-smash detection --- neither segfaults raw. Explain which mitigation arm caught each, and why earlier labs saw different exits.
+    \item Produce a crashing input for \lstinline{lab_plain} (a \lstinline{seed_over}-style frame with an oversized payload works; the reference ASan build reports the stack overflow) and confirm it in the no-sanitizer build under the debugger. Verified on the reference build: the SDK-default build aborts (SIGABRT, exit 133, inside \lstinline{__memcpy_chk}); the \lstinline{-D_FORTIFY_SOURCE=0} build dies by SIGABRT (exit 134, 3/3 runs) via stack-smash detection --- neither segfaults raw. Explain which mitigation arm caught each, and why the two builds exit differently.
     \item Confirm the corruption itself at the byte level (verified transcript): break at \lstinline{lab_target.c:46}, \lstinline{thread until 51}; \lstinline{memory read (uintptr_t)&buf[96]} shows \lstinline{00 80 00 00} before the memcpy, \lstinline{41 41 41 41} after --- the payload landed 32 bytes past the buffer end. This is the instruction-level confirmation section for your crash report.
 \end{enumerate}
 
@@ -114,7 +116,7 @@ watch *(char*)<addr>
     \item Exercise 1's three-fact answer (length/source/destination registers).
     \item Exercise 2's watchpoint transcript showing the UAF read.
     \item Exercise 3's tracer scripts and hit counts.
-    \item Exercise 4's confirmation section, appended to the fuzzing-lab report.
+    \item Exercise 4's confirmation section, written up as a standalone crash report.
 \end{enumerate}
 
 \end{document}

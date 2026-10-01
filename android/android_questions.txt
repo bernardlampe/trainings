@@ -2,35 +2,33 @@
 --------------------------------------------------------------------------------
 
 1. What does the /proc/self/maps file tell you and why is it important? Also, how is it implemented in the kernel?
-    1. /proc/self/maps can be open and read as a regular file and will return a table containing the virtual memory addresses (VMAs) mapped for current running process.
-    2. The maps file is implemented as a sequence (seq) file type in the Linux kernel and reads the VMA's from the mmu pointed to in the process task struct.
-       The implementation is declared in fs/proc/base.c of the Linux source tree.
+    1. /proc/self/maps can be opened and read as a regular file and will return a table containing the virtual memory addresses (VMAs) mapped for the current running process.
 
 2. What are the uses of mmap? What are some bugs regularly found in mmap?
-    1. mmap can be used to allocate anonymous VMA's into the user space process and act as an allocator in this regard.
+    1. mmap can be used to allocate anonymous VMAs into a userspace process and act as an allocator in this regard.
     2. mmap can be used to map in files without syncing all the contents to physical memory at once.
     2. mmap is also used by drivers (such as the GPU) to export or import virtual memory pages from the device.
-    3. Bug regularly found in mmap are lack of bounds checking, integer overflows in sizes, OOB accesses in the vma_ops that can be attached to a mapped region.
+    3. Bugs regularly found in mmap are: lack of bounds checking, integer overflows in sizes, OOB accesses in the vma_ops that can be attached to a mapped region.
         Reference: https://labs.f-secure.com/assets/BlogFiles/mwri-mmap-exploitation-whitepaper-2017-09-18.pdf
 
-3. Explain ptrace. How you might inject code into another process using ptrace?
-    1. Ptrace is a syscall (sys_ptrace implemented in kernel/ptrace.c) that allows a user space process to trace and debug another user space process. Enforcement of DAC/MAC permissions is done the kernel. The interface allows a user to attach/stop a process, inspect/modify virtual memory, etc.
+3. Explain ptrace. How might you inject code into another process using ptrace?
+    1. Ptrace is a syscall (sys_ptrace implemented in kernel/ptrace.c) that allows a user space process to trace and debug another user space process. Enforcement of DAC/MAC permissions is done by the kernel. The interface allows a user to attach/stop a process, inspect/modify virtual memory, etc.
     2. Injecting into another process requires:
-        a. PTRACE_ATTACH call or fork-exec with PTRACE_ME, stop the group leader is ideal
-        b. Multi-threaded processes, must attach to all the threads individually
-        c. Backup the current page upon which the PC sits using PTRACE_PEEK
-        d. Backup register state using PTRACE_GETREGS
+        a. Call PTRACE_ATTACH, or fork+exec with PTRACE_TRACEME; stopping the group leader is ideal
+        b. For multi-threaded processes, attach to all threads individually
+        c. Back up the current page upon which the PC sits using PTRACE_PEEK
+        d. Back up register state using PTRACE_GETREGS
         e. Overwrite the current executing page with shellcode using PTRACE_POKE
         f. Call PTRACE_CONT the thread
         g. Have the shellcode throw a trap when it is done
         h. Restore the page and register state
-        i. Call PTRACE_DETACH
+        i. Call PTRACE_DETACH.
 
 4. Describe how SELinux policies are used. How would you check the context of a file system object and a process? What file systems support  SELinux and which do not?
     1. SELinux is a mandatory access control (MAC) policy that is enforced at the syscall gateways and other places in the kernel. The kernel provides a consistent interface for any security module.
-    2. The current process context is in /proc/self/attr/current. Can be queried by reading that file. To change the process policy, bionic will write to these files.
-    3. File system objects can be queried using ls -z or by querying the security xattrs of the file system.
-    4. Ext4 is the principle file system used by Android and supports extended attributes. The vfat file system's lack of xattrs is compensated for in the Android kernel via hard coded contexts in the fuse drivers.
+    2. The current process context is in /proc/self/attr/current. It can be queried by reading that file. Bionic writes to these files to set the process policy.
+    3. File system objects can be queried using ls -Z or by querying the security xattrs of the file system.
+    4. Ext4 is the principal file system used by Android and supports extended attributes. The vfat file system's lack of xattrs is compensated for in the Android kernel via hard-coded contexts in the FUSE drivers.
 
 5. What do you initially look for when auditing Linux source?
     1. Custom vendor code not in the mainline, especially drivers
@@ -43,68 +41,67 @@
 * Android specific interview questions for VR
 --------------------------------------------------------------------------------
 
-1. Differences between android and Linux distros?
-    Android adds the following on the Linux distros:
+1. What are the differences between Android and Linux distributions?
+    Android adds the following on top of a Linux distribution:
         1. Binder IPC
         2. Ashmem shared memory
         3. ION allocators
-        4. Trustzone drivers
+        4. TrustZone drivers
         5. Trustlets
-        6. Android DSP RPC (adsprpc drivers for qualcomm)
+        6. Android DSP RPC (the adsprpc drivers on Qualcomm platforms)
         7. dm-verity for system integrity checking on boot
-        8. Android specific security mechanism (Knox, TIMA, RKP, cryptfs, etc)
+        8. Android-specific security mechanisms (Knox, TIMA, RKP, cryptfs, etc)
 
-2. Walk through the process of debugging a binary on the phone. The order of some of these can be switched.
-    1. root the phone if you need to debug a system application such as vold, system_server, init, etc
-    2. use adb to push gdbserver onto the phone, preferably the gdbserver included in the NDK with the api version matching your phone
-    3. adb forward the tcp port you will use for gdb remote
-    4. attach gdbserver to the target process
-        $phone gdbserver -attach :<tcp port> <pid>
-    5. use gdb (specific to arch or preferable gdb-multiarch on ubuntu) on host to connect into gdbserver
+2. Walk through the process of debugging a binary on the phone. The order of some of these steps can be switched around.
+    1. Root the phone if you need to debug a system application such as vold, system_server, or init
+    2. Use adb to push gdbserver onto the phone --- preferably the gdbserver included in the NDK, with the API version matching the phone
+    3. Use adb to forward the TCP port you will use for the GDB remote connection
+    4. Attach gdbserver to the target process
+        $phone gdbserver --attach :<tcp port> <pid>
+    5. Use gdb on the host (preferably gdb-multiarch on Ubuntu) to connect to gdbserver
         $host gdb-multiarch
         > target remote :<port>
 
 3. What types of problems are typical when debugging remotely with gdbserver?
-    1. gdb determines the arm/aarch64 architecture from the loaded executable, however on 32 bit systems it can't tell if the processor is in arm of thumb mode. So you must set the mode explicitly. This may require reversing to determine what mode the processor is in at the particular text address.
-    2. gdb is very sensitive to the version of the debugger used. It is ideal to match the gdbserver version to the gdb/gdb-multiarch version.
+    1. gdb determines the arm/aarch64 architecture from the loaded executable, however on 32 bit systems it cannot tell whether the processor is in ARM or Thumb mode. You must set the mode explicitly. This may require reversing to determine the mode at the particular text address.
+    2. gdb is very sensitive to the version used. It is ideal to match the gdbserver version to the gdb/gdb-multiarch version.
 
 4. Walk through typical ways to root Android phones.
-    1. Open developer mode by clicking repeatedly on the Build Number in the About Phone settings
+    1. Open developer mode by tapping repeatedly on the Build Number in the About Phone settings
     2. OEM unlock the bootloader using Developer mode menu
     3. Install TWRP via fastboot or Odin or Flashtool, usually vendor specific
     4. Boot into recovery mode which will bring up TWRP
     5. Install SuperSu or Magisk
     6. Reboot and su
 
-5. What problems could you run to along the way when rooting a phone?
+5. What problems could you run into along the way when rooting a phone?
     1. Cannot unlock bootloader due to carrier lock (Verizon or AT&T)
-    2. TWRP not working correctly, sometimes no error  messages are given
-    3. DM-verity can be a problem, try using no-verity install from TWRP
-    4. If you can't get the phone rooted, you'll have to do a TempRoot which is just a fancy name
-       for an exploit. Hopefully one exists.
+    2. TWRP not working correctly, sometimes no error messages are given
+    3. dm-verity can be a problem; try the no-verity option from TWRP
+    4. If the phone cannot be permanently rooted, a TempRoot --- a fancy name for an exploit --- is the fallback. Hopefully one exists for the target version.
     5. Many other random things...
-    6. RMM protection in Samsung
+    6. RMM protection on Samsung
 
-6. If you had an adb session to a phone, what is the attack surface to get to kernel?
+6. If you had an adb session to a phone, what is the attack surface to reach the kernel?
     1. Kernel drivers that have /proc entries
     2. Kernel drivers that expose /dev entries
     3. Debuggerd/crash_dump processing of the executable
-    4. GPU's, mali and kgsl
+    4. GPUs: Mali and kgsl (Adreno)
     5. Special file system operations, for example cryptfs functions
     6. Daemons listening on unix domain sockets
     7. Android services especially those that don't check root or are vendor provided
-    8. Binder itself such as bugs like CVE-2019-2215.
+    8. Binder itself (e.g., CVE-2019-2215).
     9. Trust zone drivers
 
 7. If you couldn't get adb, what is the attack surface to get initial access?
-    1. USB, mounts as mass storage device, host usb keyboard and mouse, or ethernet over usb
-    2. Cell processor, see research by Amat Cama
+    1. USB: the device mounts as a mass-storage device, enumerates as a host USB keyboard or mouse, or provides Ethernet over USB
+    2. The cell baseband processor; see the baseband research by Amat Cama
     3. Bluetooth
     4. Near field comms (NFC)
 
 8. How does debuggerd/crash_dump work?
-    1. Before Android 8 (Oreo), the debuggerd was a daemon and any process could send it their pid using a Unix Domain socket. The bionic library included signal handling functions that were installed by the dynamic linker. Therefore when a SIGSEGV happened, the sighandler would send the pid to debuggerd. At this point debuggerd (who had ptrace ability) would stop the process, ptrace attach and create a tombstone file.
-    2. In Android 8 and above, debuggered is no longer running. The linker installs signal handlers that will invoke /system/bin/crashdump{32|64}. When this is launched, the crash dump will attach to the parent process and create a tombstone.
+    1. Before Android 8 (Oreo), the debuggerd was a daemon and any process could send it their pid over a UNIX domain socket. The bionic library included signal handling functions that were installed by the dynamic linker. Therefore when a SIGSEGV happened, the signal handler would send the pid to debuggerd. At this point debuggerd (who had ptrace ability) would stop the process, ptrace attach and create a tombstone file.
+    2. In Android 8 and above, the debuggerd daemon is gone. The linker installs signal handlers that will invoke /system/bin/crash_dump32 or crash_dump64. When this is launched, the crash dump process attaches to the parent process and creates a tombstone.
 
-9. How to emulate android?
-    1. Good emulators I know of are the Android x86 project. These run in VMWare, Qemu, and VirtualBox. In addition,you can compile custom kernels as well as AOSP and debug https://www.android-x86.org/. The downside is you miss all the vendor specific code and trustzone. However, kernel debugging on a phone is hard to get.
+9. How do you emulate Android?
+    1. A good option is the Android-x86 project (https://www.android-x86.org/); it runs in VMware, QEMU, and VirtualBox, and you can compile custom kernels and AOSP and debug them. The downside is you lose all the vendor-specific code and TrustZone. However, kernel debugging on a physical phone is hard to obtain.

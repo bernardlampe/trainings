@@ -46,8 +46,8 @@
 
 \section*{Introduction}
 \begin{enumerate}
-    \item Kernel bugs are the highest-value class: a kernel primitive defeats every user-space mitigation boundary at once (sandbox, MAC, process isolation). Correspondingly the audits are harder: bigger codebase, more concurrency, guard pages replaced by trust.
-    \item The module covers kernel attack surface enumeration, driver auditing discipline, kernel fuzzing, and the exploitation model differences from user land. Assume the source auditing lecture's bug patterns as prerequisites --- they all recur in the kernel with different primitives.
+    \item Kernel bugs are a high-value class: a kernel primitive defeats user-space mitigations (sandbox, MAC, process isolation).
+    \item The module covers kernel attack surface enumeration, driver auditing discipline, kernel fuzzing, and the exploitation model differences from user land. The bug patterns of user-space C (overflow, UAF, uninitialized use, refcount errors, path races) all recur in the kernel with different primitives.
 \end{enumerate}
 
 \section*{Kernel Attack Surface}
@@ -56,15 +56,15 @@
     \begin{enumerate}
         \item Sockets and netlink sockets: protocol handlers (AF\_INET families, netlink message parsers) are classic remote-to-kernel and local-to-kernel surfaces respectively. Netlink family handlers historically have weak length validation.
         \item UNIX domain sockets: SCM\_RIGHTS fd passing and the message parsers.
-        \item Crash handling facilities: coredump pipelines, ptrace, \lstinline{prctl} handlers. The debuggerd/crash\_dump model from android\_questions.txt is Android's version of this surface.
+        \item Crash handling facilities: coredump pipelines, ptrace, \lstinline{prctl} handlers. Android's debuggerd/crash\_dump pipeline is the Android version of this surface.
         \item Kernel helpers exposed for user convenience: \lstinline{keyctl}, \lstinline{bpf}, \lstinline{io_uring}, perf events, \lstinline{userfaultfd}. Each is a parser + state machine reachable by unprivileged callers where available.
-        \item Filesystems: both the VFS switch layer and individual filesystem parsers (on-disk format validators). mountable-media parsers process attacker-authored bytes with kernel privileges and historically yield everything from OOB reads to arbitrary writes; CVE-2016-5195 (Dirty COW) was reachable through a private mapping race code path.
+        \item Filesystems: both the VFS switch layer and individual filesystem parsers (on-disk format validators). Mountable-media parsers process attacker-authored bytes with kernel privileges and historically yield everything from OOB reads to arbitrary writes; CVE-2016-5195 (Dirty COW) was reachable through a private mapping race code path.
         \item Race conditions: kernel preemption points inside syscall families create windows; a class of their own (see Concurrency).
-        \item GPUs: the largest vendor-written attack surface on modern systems (see Drivers).
+        \item GPUs or NPUs: the largest vendor-written attack surface on modern systems. These are in the privileged neighbor or privileged helper category. Consider the privilege level of the perhipheral / neighbor (see Drivers).
     \end{enumerate}
-    \item Android additions map to android\_questions.txt items: binder, ashmem, ION, trustzone drivers, adsprpc, /proc and /dev entries of vendor drivers.
-    \item Method: enumerate the surface the way the source auditing lecture teaches attack surface analysis, but with the kernel-specific reachability question: who can open/reach this (DAC, MAC, capability, namespace), where do untrusted bytes first touch kernel memory?
-    \item The generic syscall table is the largest single surface, and the reason it is worth reading in slices rather than as a whole. The families that recur in public research:
+    \item Android's kernel additions are: binder, ashmem, ION, TrustZone drivers, adsprpc, and the /proc and /dev entries of vendor drivers.
+    \item Method: enumerate the surface with the standard attack-surface-analysis questions, but add the kernel-specific reachability question: who can open/reach this (DAC, MAC, capability, namespace), where do untrusted bytes first touch kernel memory?
+    \item The generic syscall table is the largest single surface, and the reason it is best read in slices rather than as a whole. The families that recur in public research:
     \begin{enumerate}
         \item \lstinline{io_uring} (5.1+): an asynchronous syscall interface with its own object model, its own parser of submission entries, and historically a rich source of lifetime bugs.
         \item \lstinline{eBPF} and the verifier: a bytecode interpreter whose verifier is the security boundary, and whose own bugs are a distinct research area.
@@ -73,20 +73,20 @@
         \item Filesystem and mountable-media parsers: a mounted image is attacker-authored bytes processed with kernel privilege (the classic CVE source).
         \item USB and Bluetooth stacks: reachable by plugging in a device or by radio, no local access required.
     \end{enumerate}
-    \item The generic vs.\ vendor split from the source auditing lecture applies exactly here: the mainline syscall surface is fuzzed by syzkaller and audited by maintainers for years; the vendor driver and the vendor patch on top of mainline are neither. The highest-yield enumeration is a diff of a vendor kernel against the mainline version it was based on.
+    \item The generic vs.\ vendor split applies exactly here: the mainline syscall surface is fuzzed by syzkaller and audited by maintainers for years; the vendor driver and the vendor patch on top of mainline are neither. The highest-yield enumeration is a diff of a vendor kernel against the mainline version it was based on.
 \end{enumerate}
 
 \section*{Driver Auditing Section}
 \begin{enumerate}
-    \item DAC and MAC, and how each is implemented. DAC is the classic permission bits checked at the VFS (\lstinline{inode_permission} $\to$ \lstinline{generic_permission}, with POSIX ACLs and the sticky bit as modifiers). MAC (SELinux, SMACK, AppArmor, and the newer BPF-LSM) adds policy hooks at the syscall gateways and other entry points through the LSM framework (\lstinline{include/linux/lsm_hooks.h}, called from \lstinline{security/security.c}). Neither is a bug boundary: a driver reachable by a sandboxed-but-labeled process is reachable, period. The security models module is the full treatment of this paragraph.
-    \item Identify what is available \lstinline{/dev/} and \lstinline{/proc/} and to whom: walk the device tree on the target, check DAC modes and SELinux labels (\lstinline{ls -Z}), and map which contexts can open which nodes. The vendor-written, least-audited parts exposed to untrusted contexts are the audit queue.
+    \item DAC and MAC, and how each is implemented. DAC is the classic permission bits checked at the VFS (\lstinline{inode_permission} $\to$ \lstinline{generic_permission}, with POSIX ACLs and the sticky bit as modifiers). MAC (SELinux, SMACK, AppArmor, and the newer BPF-LSM) adds policy hooks at the syscall gateways and other entry points through the LSM framework (\lstinline{include/linux/lsm_hooks.h}, called from \lstinline{security/security.c}). Neither is a bug boundary: a driver reachable by a sandboxed-but-labeled process is reachable, period.
+    \item Identify what is available in \lstinline{/dev/} and \lstinline{/proc/} and to whom: walk the device tree on the target, check DAC modes and SELinux labels (\lstinline{ls -Z}), and map which contexts can open which nodes. The vendor-written, least-audited parts exposed to untrusted contexts are the audit queue.
     \item Identify fops for each available thing: for each character device the \lstinline{file_operations} table defines the reachable verbs (open/read/write/ioctl/mmap/release). The audit surface of a driver is its fops table plus whatever sysfs/procfs/debugfs entries it registers.
-    \item Focus on things that are implemented by vendors or third party (lower hanging fruit): GPU (Mali, Adreno/kgsl), modem, sensor, and ION-adjacent code. Mainline-audited code is fuzzed for years; the vendor driver written by the contracted vendor is not.
+    \item Focus on things implemented by vendors or third parties (lower-hanging fruit): GPU (Mali, Adreno/kgsl), modem, sensor, and ION-adjacent code. Mainline-audited code is fuzzed for years; the vendor driver written by the contracted vendor is not.
     \item Make sure you understand what open and release are doing and are matched up: leaked references, reference counts incremented but never decremented, per-fd state stored in globals --- all give UAF/overflow primitives.
-    \item Focus on mmap and that they check parameters correctly: kernel mmap handlers take (vma); the checks are on vma->vm\_pgoff $,\,$ vm\_end $-$ vm\_start against the device memory region and remap\_pfn\_range arguments. The classic bug: offset+size computed in u32 (wraparound), or remapping more than the device region --- giving user pages of kernel physical memory. The model\_driver.c lab companion reproduces the wraparound shape.
+    \item Focus on mmap and its parameter checks: kernel mmap handlers take (vma); the checks are on vma->vm\_pgoff $,\,$ vm\_end $-$ vm\_start against the device memory region and remap\_pfn\_range arguments. The classic bug: offset+size computed in u32 (wraparound), or remapping more than the device region --- giving user pages of kernel physical memory. The model\_driver.c lab companion reproduces the wraparound shape.
     \item Focus on extensible drivers such as ION: allocator interfaces taking user-side size/flags; each new handle type is a new parser.
-    \item Focus on things in the driver which are overrode in higher level like /proc level: overrides whose checks disagree with their \lstinline{fops} base implementations (per-file .read vs driver's internal handler) are check-disagreement candidates.
-    \item The mechanical checklist for each driver verb, because the bugs are the same shapes the source auditing module names:
+    \item Focus on things in the driver which are overridden at a higher level, such as the /proc level: overrides whose checks disagree with their \lstinline{fops} base implementations (per-file .read vs driver's internal handler) are check-disagreement candidates.
+    \item The mechanical checklist for each driver verb, because the bugs are the same shapes as the user-space bug patterns:
     \begin{enumerate}
         \item \textbf{\lstinline{ioctl}}: is the command number validated (\lstinline{_IOC_TYPE}/\lstinline{_IOC_NR}/\lstinline{_IOC_SIZE}), or is the whole \lstinline{unsigned long arg} used as an index, a size, or a pointer? Is there a \lstinline{compat_ioctl} for 32-bit callers, and does it validate the same fields? A 64-bit struct copied into a 32-bit layout is the classic mismatch.
         \item \textbf{Argument copy}: every \lstinline{copy_from_user} return value checked; every struct fully initialized before use (a partially filled struct is the uninitialized-memory pattern); every size derived from user input bounded against the destination.
@@ -106,7 +106,7 @@
     \item syzkaller: descriptor-based syscall generation with coverage feedback (KCOV); the production standard for Linux kernel syscall fuzzing. Descriptor language encodes kernel structs so the fuzzer learns which argument shapes drive deep paths.
     \item razzer: research system targeting data races in kernel drivers (fine-grained race-window scaling).
     \item Kernel fuzzing harness specifics: cover-feed costs (KCOV overhead), recovery of kernel state between inputs (VM snapshots or reboot loops), and the sanitizer arm: KASan (UAF/OOB), KCSan, KMSan equivalents.
-    \item syzkaller in the detail that matters: descriptions are programs in the \lstinline{syzlang} language, each syscall with its argument types; \lstinline{syz-manager} runs a pool of VMs, each with \lstinline{syz-executor}; \lstinline{syz-repro} and \lstinline{syz-crush} minimize and deduplicate; and coverage comes from KCOV. Because the descriptor encodes kernel structs, the fuzzer's generated arguments are already plausible, which is the generative half of the fuzzing module applied to syscalls.
+    \item syzkaller in the detail that matters: descriptions are programs in the \lstinline{syzlang} language, each syscall with its argument types; \lstinline{syz-manager} runs a pool of VMs, each with \lstinline{syz-executor}; \lstinline{syz-repro} and \lstinline{syz-crush} minimize and deduplicate; and coverage comes from KCOV. Because the descriptor encodes kernel structs, the fuzzer's generated arguments are already plausible, which is the generative-fuzzing idea applied to syscalls.
     \item The kernel fuzzing loop is more expensive than a userspace one for three reasons: every input needs a fresh kernel state (VM snapshot or reboot), a crash takes the whole VM down, and the feedback channel (KCOV) is slower than a shared-memory bitmap. That cost is why kernel fuzzing is measured in cores $\times$ time rather than in executions per second.
     \item Where the bugs are, given a fixed budget: the syscall families above, the vendor drivers, and the filesystem parsers. \lstinline{syzbot} and the public kernel CTF programs are the practical proof that this works; a report from either is a starting point, not a finding.
 \end{enumerate}
@@ -114,7 +114,7 @@
 \section*{Android Specific Attack Surfaces}
 \begin{enumerate}
     \item Kernel side: /proc and /dev entries (gpu, ashmem, binder, vendor drivers) as enumerated in the Driver section; plus Android-specific kernel additions (binder.c, ashmem, ION) that upstream does not share the same audit depth on.
-    \item User side: all the services and how to go after them --- android\_questions.txt covers service enumeration, binder transactions, and the debuggerd pipeline; treat the user-facing service exposure as a client to the kernel surfaces above, not as a separate target class.
+    \item User side: all the services and how to go after them --- enumerate the services, the Binder transactions they accept, and the debuggerd pipeline; treat the user-facing service exposure as a client to the kernel surfaces above, not as a separate target class.
     \item The Android kernel is a vendor fork of a specific mainline release, and the fork is the audit queue: the Android Common Kernel (ACK) plus the vendor's own patches plus the vendor modules. Diffing the device's kernel source against the matching ACK branch is the fastest enumeration of the added surface.
     \item Android hardening that changes the reachability of the surfaces above, and that therefore must be read first: SELinux per-domain policy with \lstinline{neverallow} constraints, per-app \lstinline{seccomp} filters, the app sandbox's per-UID isolation, and the Generic Kernel Image (GKI) boundary that keeps vendor modules in a separate interface.
     \item Android debugging builds are the practical entry point: a \lstinline{userdebug} or \lstinline{eng} build has \lstinline{adb root}, a permissive-or-disableable SELinux, and often KASAN enabled, which is the state in which the kernel fuzzing loop above is actually run.
@@ -124,13 +124,13 @@
 \begin{enumerate}
     \item Every syscall can run preemption-point-concurrent with itself on another CPU: every global or shared structure reachable from a syscall is racy unless an explicit lock says otherwise.
     \item Audit discipline: for each fops verb, list the shared state touched (module globals, driver context, file-private), and the lock that protects it (or an explicit ``none''). Any pair of verbs sharing mutable state without a common lock is a candidate race.
-    \item get\_user\_pages and mmap-expansion races, table-realloc races (handle tables growing while another thread indexes), and driver reference-count/check pairs are the recurring shapes --- the source auditing lecture's refcount-borrow and path-race sections transfer directly.
+    \item get\_user\_pages and mmap-expansion races, table-realloc races (handle tables growing while another thread indexes), and driver reference-count/check pairs are the recurring shapes --- the refcount-borrow and path-race patterns transfer directly.
     \item The kernel locking vocabulary to name in the audit, because ``no lock'' is the finding:
     \begin{enumerate}
         \item \lstinline{spinlock_t} (atomic, no sleeping) and \lstinline{mutex} (sleepable) protect a shared structure; the audit question is whether \emph{every} access to that structure holds it.
         \item \lstinline{rcu_read_lock} is a reader-side convention, not a lock: it protects only while the reader holds a reference, and \lstinline{rcu_dereference}/\lstinline{rcu_assign_pointer} are the rules that make the convention real.
         \item \lstinline{seqlock_t} and \lstinline{rwlock_t} are the optimistic and reader/writer variants; a seqlock's retry loop is a place where a check can be re-run on a changed value.
-        \item \lstinline{atomic_t}/\lstinline{refcount_t}/\lstinline{kref} are the lifetime primitives; an \lstinline{atomic_dec_and_test} that frees is the kernel form of the source auditing lecture's refcount bug.
+        \item \lstinline{atomic_t}/\lstinline{refcount_t}/\lstinline{kref} are the lifetime primitives; an \lstinline{atomic_dec_and_test} that frees is the kernel form of the user-space refcount bug.
         \item \lstinline{waitqueue}, \lstinline{completion}, \lstinline{workqueue}, \lstinline{timer}, \lstinline{tasklet}, and softirq contexts are where a callback runs later than the check; anything the callback reads may have changed.
     \end{enumerate}
     \item The tools: \lstinline{lockdep} proves the locking discipline at runtime, \lstinline{KCSan} finds the data races, and \lstinline{CONFIG_DEBUG_*} plus \lstinline{syzbot}'s race reports are the public evidence. In an audit, a function that takes a lock in one path and not another is a candidate; \lstinline{lockdep} is the check.
@@ -141,27 +141,27 @@
 \begin{enumerate}
     \item Differences between physical mem, io mem, vmalloc and kalloc memory: kmalloc (slab/slub: physically contiguous, small sizes, active freelists), vmalloc (virtually contiguous, page-mapped, larger allocations), ioremap/device memory (MMIO regions, side effects on access), physical pages obtained by page allocator. Exploit primitives differ per region: kmalloc corruption operates on freelist metadata (SLUB freelist pointer hardening, CONFIG\_SLAB\_FREELIST\_HARDENED), vmalloc/page-level attacks target page tables.
     \item Kernel heap layouts and spraying: the heap is shared across all processes and kernel activity --- the attacker's own syscalls (pipe buffers, msg\_msg, setxattr, userfaultfd-staged frees) double as spray primitives. Cross-cache and cross-ring attacks (user-allocated pages reinterpreted as kernel objects on type confusion) are the modern framing.
-    \item Spraying techniques: many small same-size allocations (msgget, ftruncate on pipe, add\_key) to groom slab pages; heap-feng-shui (allocate/free to carve holes) mirrors user-land grooming from the source auditing heap-qualities list with different size-class arithmetic.
+    \item Spraying techniques: many small same-size allocations (msgget, ftruncate on pipe, add\_key) to groom slab pages; heap-feng-shui (allocate/free to carve holes) mirrors user-land grooming with different size-class arithmetic.
     \item Post-corruption goal differs: kernel land prizes elevation (cred struct overwrite, modprobe\_path overwrite, sid loop through process credentials) and the read-modify-write target set is the kernel's own metadata, so an in-place arbitrary write already wins if you pick the right target.
     \item The user-to-kernel boundary is a small mitigation map of its own, and each row changes what the chain needs:
     \begin{enumerate}
-        \item \textbf{SMEP/SMAP}: the kernel cannot execute or read user pages, so \lstinline{ret2usr} and a user-mapped fake stack both fail; the chain must stay in kernel memory (kernel ROP, a pivot into a kernel object).
+        \item \textbf{SMEP/SMAP or PXN/PAN}: the kernel cannot execute or read user pages, so \lstinline{ret2usr} and a user-mapped fake stack both fail; the chain must stay in kernel memory (kernel ROP, a pivot into a kernel object).
         \item \textbf{KPTI}: user page tables are separate, so a kernel address is not mapped in userspace; the leak and the chain must use kernel addresses, and \lstinline{ret2dir} (pivoting through the direct map) becomes the workaround for SMAP.
         \item \textbf{KASLR}: the kernel base is randomized per boot, so the chain needs a kernel leak (\lstinline{kallsyms}, a \lstinline{seq_operations} read, a \lstinline{msg_msg} over-read) before it can name a gadget or a function.
         \item \textbf{Stack canary} (\lstinline{CONFIG_STACKPROTECTOR}): an overwrite past a stack buffer must reproduce the per-task canary, which is why the canary is usually leaked rather than brute-forced.
         \item \textbf{SLUB freelist hardening} (\lstinline{CONFIG_SLAB_FREELIST_HARDENED}/\lstinline{_RANDOM}): the freelist pointer is mangled and the next free object is randomized, so the classic ``overwrite the next pointer'' groom is no longer deterministic.
-        \item \textbf{usercopy hardening}, \lstinline{INIT_ON_ALLOC}/\lstinline{INIT_ON_FREE}, and \lstinline{STATIC_USERMODEHELPER}: remove the cheap uninitialized-read, the reused-object, and the \lstinline{modprobe_path} primitives respectively. Read the target's config before choosing a technique.
+        \item \textbf{usercopy hardening}, \lstinline{INIT_ON_ALLOC}/\lstinline{INIT_ON_FREE}, and \lstinline{STATIC_USERMODEHELPER}: remove the easy uninitialized-read, the reused-object, and the \lstinline{modprobe_path} primitives respectively. Read the target's config before choosing a technique.
     \end{enumerate}
-    \item The techniques that recur in public research, and the bug each needs: a UAF or double-free groomed into a sprayed object (\lstinline{msg_msg}, \lstinline{pipe_buffer}, \lstinline{sk_buff}, \lstinline{tty_struct}, \lstinline{seq_operations}, \lstinline{setxattr}); an overflow into a length field (\lstinline{msg_msg}'s \lstinline{m_ts}) for an out-of-bounds read or write; an in-place write of \lstinline{cred} for a direct elevation; and \lstinline{userfaultfd} or \lstinline{FUSE} to widen a race window (the debugging module's timing problem at kernel scale).
+    \item The techniques that recur in public research, and the bug each needs: a UAF or double-free groomed into a sprayed object (\lstinline{msg_msg}, \lstinline{pipe_buffer}, \lstinline{sk_buff}, \lstinline{tty_struct}, \lstinline{seq_operations}, \lstinline{setxattr}); an overflow into a length field (\lstinline{msg_msg}'s \lstinline{m_ts}) for an out-of-bounds read or write; an in-place write of \lstinline{cred} for a direct elevation; and \lstinline{userfaultfd} or \lstinline{FUSE} to widen a race window (the debugger's timing perturbation problem, at kernel scale).
     \item The elevation goal is usually one of a small set: overwrite the current task's \lstinline{cred} (or \lstinline{commit_creds(prepare_kernel_cred(0))} if control flow is available); overwrite \lstinline{modprobe_path} or \lstinline{core_pattern} for a controlled helper execution; overwrite a function pointer used by a subsystem running in a privileged context; or corrupt the page tables directly.
     \item \lstinline{Dirty COW} (CVE-2016-5195), \lstinline{Dirty Pipe} (CVE-2022-0847), and \lstinline{DirtyCred} are the class of bugs whose whole exploit is an in-place write into a read-only object; they are the reason the read-modify-write target set above is the one that matters, not a control-flow hijack.
-    \item Cross-cache attacks (reclaiming a freed slab page for a different cache) are the modern generalization of the userspace grooming technique, and they are why the allocator's \lstinline{CONFIG_*} hardening must be read before the primitive is priced.
+    \item Cross-cache attacks (reclaiming a freed slab page for a different cache) are the modern generalization of the userspace grooming technique, and they are why the allocator's \lstinline{CONFIG_*} hardening must be read before the primitive is assessed.
 \end{enumerate}
 
 \section*{Conclusion}
-The kernel is more source auditing than anything else: the bug classes do not change; they scale (concurrency everywhere), the guard rails change (nobody isolates you from the kernel), and the payoff structures differ (elevation primitives rather than shellcode). Combine: surface enumeration from source auditing, the fuzzing module's syzkaller/KASan stack, and the reversing module's toolset for vendor blobs.
+The bug classes do not change; they scale (concurrency everywhere), the guard rails change (nobody isolates you from the kernel), and the payoff structures differ (elevation primitives rather than shellcode).
 
-The module in one sentence: enumerate who can reach which kernel memory (DAC, MAC, capability, namespace), read the vendor half of the surface first, and price every finding against the kernel's own mitigation map (SMEP/SMAP, KPTI, KASLR, canary, SLUB hardening, usercopy hardening). The kernel is the one target where the mitigation map and the attack surface are both larger than any userspace target, and where the audit-queue rule pays the most.
+The module in one sentence: enumerate who can reach which kernel memory (DAC, MAC, capability, namespace), read the vendor half of the surface first, and assess every finding against the kernel's own mitigation map (SMEP/SMAP or PXN/PAN, KPTI, KASLR, canary, SLUB hardening, usercopy hardening). The kernel is the one target where the mitigation map and the attack surface are both larger than any userspace target, and where the audit-queue rule yields the most.
 
 \section*{References}
 \begin{enumerate}
@@ -170,7 +170,6 @@ The module in one sentence: enumerate who can reach which kernel memory (DAC, MA
 	\item KCOV documentation: kernel.org doc (kcov.rst)
 	\item LWN kernel development articles (lwn.net/Kernel/Index)
 	\item Dirty COW writeups (dirtycow.ninja), Dirty Pipe (CVE-2022-0847)
-	\item android\_questions.txt in this repo (interview-grade kernel/Android surface notes)
 	\item Model of Source Trees: kernel newbies (kernelnewbies.org)
 	\item Kernel Self Protection Project (kspp) hardening recommendations and the Linux kernel documentation on LSM, KASAN and seccomp
 	\item kernelCTF and syzbot public reports (google.github.io/security-research, syzbot.appspot.com)

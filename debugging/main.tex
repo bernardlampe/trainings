@@ -48,10 +48,10 @@
 
 \section*{Introduction}
 \begin{enumerate}
-    \item The debugger is the vulnerability researcher's microscope: every other module's output (a crash, a suspicious pointer, a suspect state transition) ends up in a debugger for confirmation. This module teaches it as a research instrument, not a crash-response tool.
+    \item The debugger is the vulnerability researcher's microscope: every other analysis step's output (a crash, a suspicious pointer, a suspect state transition) ends up in a debugger for confirmation. This module teaches it as a research instrument, not a crash-response tool.
     \item Mental model: a debugger is \lstinline{ptrace} (Linux/BSD), Mach task ports (macOS), or the OS debug API (Windows: \lstinline{DebugActiveProcess}, debug events loop) plus a symbol engine on top. Knowing the substrate explains every limitation: why attach changes timing, why breakpoints corrupt self-checking code, why core dumps lack live state.
     \item The permission model of the substrate is the first thing to check when a debugger refuses to attach: Linux DAC plus \lstinline{ptrace_scope} (Yama) plus SELinux; macOS requires the \lstinline{com.apple.security.get-task-allow} entitlement or SIP disabled for a protected target; Windows requires \lstinline{SeDebugPrivilege} or a matching integrity level.
-    \item The debugger is a \emph{research instrument}, not a crash-response tool. Every other module's output arrives here for confirmation: a fuzzing crash (what is the exact faulting access?), a reversing hypothesis (does this branch really run?), an audit suspicion (does this path really exist?), and an exploit theory (does the write land where the report says?).
+    \item The debugger is a \emph{research instrument}, not a crash-response tool. Every other analysis step's output arrives here for confirmation: a fuzzing crash (what is the exact faulting access?), a reversing hypothesis (does this branch really run?), an audit suspicion (does this path really exist?), and an exploit theory (does the write land where the report says?).
     \item The two halves of the module: the mechanics (breakpoints, stepping, signals, cores --- what the substrate actually does) and the research method (watchpoints on attacker data, breakpoint scripts as API tracers, live heap walks, remote and kernel sessions). The mechanics half is the vocabulary; the method half is the craft.
 \end{enumerate}
 
@@ -59,7 +59,7 @@
 \begin{enumerate}
     \item \textbf{Breakpoints}: a software breakpoint writes an architecture trap byte (x86 \lstinline{0xCC}, ARM/ARM64: undefined-instruction or BRK encoding) over the instruction; the OS delivers SIGTRAP; the debugger restores, single-steps, re-arms. Consequences:
     \begin{enumerate}
-        \item In-memory code checksums see the patched byte --- this is why software breakpoints happen to break integrity-checking targets (see the binary RE anti-reversing section).
+        \item In-memory code checksums see the patched byte --- this is why software breakpoints happen to break integrity-checking targets (anti-reversing techniques such as in-memory code checksums exist).
         \item Read-only/signed code pages cannot host software breakpoints; use hardware ones.
     \end{enumerate}
     \item \textbf{Hardware breakpoints}: CPU debug registers (x86 DR0--3; ARM64 DBGWVR/DBGBVR) match addresses without modifying code. Four per thread typically. Reserved for ROM/signed/self-modifying code, and for read/write \emph{watchpoints}.
@@ -74,72 +74,72 @@
         \item Single-stepping is the trap flag (x86 \lstinline{TF} in \lstinline{EFLAGS}) or \lstinline{PTRACE_SINGLESTEP}; \lstinline{PTRACE_SYSCALL} stops on entry and exit of every syscall, and \lstinline{PTRACE_SETOPTIONS} with \lstinline{PTRACE_O_TRACESYSGOOD} is what distinguishes a syscall stop from a signal stop.
         \item Fork and thread handling is policy, not mechanism: \lstinline{follow-fork-mode} and \lstinline{detach-on-fork} decide which side of a \lstinline{fork} the debugger stays with, and \lstinline{set scheduler-locking on} is what keeps other threads from running while one is stepped (the reason a race bug disappears under the debugger).
     \end{enumerate}
-    \item Source-level conveniences worth naming, because they are the difference between a debugger and a disassembler: \lstinline{condition} (stop only when an expression holds), \lstinline{commands} (a script per breakpoint), \lstinline{catch syscall}/\lstinline{catch throw} (stop on a syscall or a C++ exception), \lstinline{until}/\lstinline{finish} (run to a line or to a return), and \lstinline{set $var = ...} (convenience variables for counting).
+    \item Source-level conveniences, because they are the difference between a debugger and a disassembler: \lstinline{condition} (stop only when an expression holds), \lstinline{commands} (a script per breakpoint), \lstinline{catch syscall}/\lstinline{catch throw} (stop on a syscall or a C++ exception), \lstinline{until}/\lstinline{finish} (run to a line or to a return), and \lstinline{set $var = ...} (convenience variables for counting).
     \item Core collection is configured by \lstinline{core_pattern} and \lstinline{ulimit -c} on Linux, by \lstinline{/cores} and \lstinline{ulimit -c} on macOS, and by the Windows Error Reporting local dumps registry key on Windows. \lstinline{coredumpctl} and \lstinline{gcore} read or produce cores; \lstinline{prctl(PR_SET_DUMPABLE)} and the setuid-transition rule are why a privileged crash often produces no core at all.
     \item Recording is the answer to non-determinism: \lstinline{rr} records and replays with \lstinline{reverse-step}/\lstinline{reverse-continue}, \lstinline{WinDbg TTD} does the same on Windows, and \lstinline{set record full} does it in \lstinline{gdb} itself. When the bug is a race, record first and debug the recording, never the live process.
 \end{enumerate}
 
 \section*{The Debugger as a Research Tool}
 \begin{enumerate}
-    \item \textbf{Data tracing by hand} --- the dynamic analogue of the source auditing lecture's taint-following: if you can find attacker-controlled bytes in a memory dump (their magic value, a recognizable length encoding), a watchpoint on that address yields every reader/writer in execution order: this is the half-day alternative to inferring data flow statically.
+    \item \textbf{Data tracing by hand} --- the dynamic analogue of static taint-following: if you can find attacker-controlled bytes in a memory dump (their magic value, a recognizable length encoding), a watchpoint on that address yields every reader/writer in execution order: this is the half-day alternative to inferring data flow statically.
     \item \textbf{Breakpoint scripting}: a breakpoint whose script records the argument registers per hit and continues turns one function into a recorded API trace (gdb: \lstinline{commands} + \lstinline{printf} + \lstinline{continue}; lldb: breakpoint command scripts). Count hits to find hot paths; dump arguments to reverse a wire format.
-    \item \textbf{Symbolic breakdown of a crash}: registers --- what each meant at the faulting instruction, per the calling-convention knowledge from the binary RE module; stack backtrace with frame pointer vs.\ without (unwind-data quality); memory --- dumping the target buffer and its neighbors at the fault.
-    \item \textbf{Instruction-level verification}: before pricing any exploitability claim, step the corruption: does the write land where the report says it does? Does the subsequent indirect call or dereference use a value the attacker wrote? The debugger is the ground-truth check on every theory.
+    \item \textbf{Symbolic breakdown of a crash}: registers --- what each meant at the faulting instruction, per the target's calling convention; stack backtrace with frame pointer vs.\ without (unwind-data quality); memory --- dumping the target buffer and its neighbors at the fault.
+    \item \textbf{Instruction-level verification}: before making any exploitability claim, step the corruption: does the write land where the report says it does? Does the subsequent indirect call or dereference use a value the attacker wrote? The debugger is the ground-truth check on every theory.
     \item \textbf{Heap inspection}: walk the allocator structures live (glibc: \lstinline{main_arena}/bins; jemalloc: run arenas; ASan builds: allocator metadata printed in the report) to answer the groom-succeeded question live.
     \item The exact commands behind each of those, because the method is only as good as the vocabulary:
     \begin{enumerate}
-        \item Map the layout: \lstinline{info proc mappings} (or \lstinline{vmmap}/\lstinline{vmaps} in \lstinline{gef}/\lstinline{pwndbg}) turns the source auditing lecture's \lstinline{/proc/self/maps} question into a live answer, with the ASLR slide visible.
+        \item Map the layout: \lstinline{info proc mappings} (or \lstinline{vmmap}/\lstinline{vmaps} in \lstinline{gef}/\lstinline{pwndbg}) turns the \lstinline{/proc/self/maps} question into a live answer, with the ASLR slide visible.
         \item Read memory: \lstinline{x/} for a raw dump, \lstinline{ptype} for a recovered type, \lstinline{find} for a value across a region, and \lstinline{dump memory} to write a region to a file for offline work.
         \item Reconstruct the fault: \lstinline{bt full} (locals per frame), \lstinline{info registers}, \lstinline{disassemble /r} (with the raw bytes, to check the reported instruction), and \lstinline{frame}/\lstinline{up}/\lstinline{down} to move between the corruption and the crash.
         \item Automate the trace: a \lstinline{commands} block that prints the argument registers and continues is an API tracer; a \lstinline{python} block in \lstinline{gdb} or an \lstinline{lldb} script is how a per-hit transcript is produced at scale.
         \item Modify the run: \lstinline{call} executes a function inside the target (through \lstinline{process_vm_writev}/\lstinline{/proc/pid/mem}), \lstinline{set} changes a variable or a register, and \lstinline{return} forces an early return. These are the tools that turn a hypothesis into a test.
     \end{enumerate}
-    \item The discipline that makes this a research tool rather than a development tool: never trust a sanitizer report or a decompiler's guess without one debugger run that shows the same fact at instruction granularity. The debugger is the arbiter for every claim the other modules make.
+    \item The discipline that makes this a research tool rather than a development tool: never trust a sanitizer report or a decompiler's guess without one debugger run that shows the same fact at instruction granularity. The debugger is the arbiter for every claim the other analysis steps make.
 \end{enumerate}
 
 \section*{Remote and Embedded Debugging}
 \begin{enumerate}
-    \item \lstinline{gdbserver} / \lstinline{lldb-server}: run the stub on the target, connect from the host with a matching-architecture-aware \lstinline{gdb} (\lstinline{gdb-multiarch}); serializes over TCP/serial. The Android module (Questions 2--3) walks the Android form of this and its failure modes (ARM/Thumb mode selection, version pairing).
-    \item Embedded: JTAG/SWD probes (OpenOCD, J-Link, Lauterbach) debug \emph{before the OS boots} --- the only way into a boot ROM or bootloader (ties to the binary RE bootloader section). Halting a core mid-boot to break a signature check is a standard move.
-    \item Kernel debugging: kgdb/KDB over serial, QEMU+\lstinline{-s -S} for full system control through the same GDB remote protocol. Starve for symbols but you have vmlinux; kernel modules need \lstinline{add-symbol-file} at their load addresses.
+    \item \lstinline{gdbserver} / \lstinline{lldb-server}: run the stub on the target, connect from the host with a matching-architecture-aware \lstinline{gdb} (\lstinline{gdb-multiarch}); serializes over TCP/serial. On Android the same recipe holds, with its own failure modes: ARM/Thumb mode selection and version pairing.
+    \item Embedded: JTAG/SWD probes (OpenOCD, J-Link, Lauterbach) debug \emph{before the OS boots} --- the only way into a boot ROM or bootloader. Halting a core mid-boot to break a signature check is a standard move.
+    \item Kernel debugging: kgdb/KDB over serial, QEMU+\lstinline{-s -S} for full system control through the same GDB remote protocol. Symbols are scarce, but vmlinux provides them; kernel modules need \lstinline{add-symbol-file} at their load addresses.
     \item Practical rules: match stub/host versions; expect ARM/Thumb mode ambiguity on 32-bit ARM (LSB of addresses); account for the debugger's perturbation on target timing (network daemons slow measurably under attach).
-    \item The remote protocol itself is worth knowing, because every remote session is a small protocol implementation: \lstinline{qXfer} transfers memory, features, and the target description; \lstinline{qSupported} negotiates what the stub can do; \lstinline{m} reads and \lstinline{M} writes memory; \lstinline{g}/\lstinline{G} move registers; and \lstinline{Z}/\lstinline{z} set and clear breakpoints. A version mismatch between stub and host shows up as an unsupported packet, a truncated register set, or \lstinline{Remote 'g' packet reply is too long}.
+    \item Knowing the remote protocol itself matters, because every remote session is a small protocol implementation: \lstinline{qXfer} transfers memory, features, and the target description; \lstinline{qSupported} negotiates what the stub can do; \lstinline{m} reads and \lstinline{M} writes memory; \lstinline{g}/\lstinline{G} move registers; and \lstinline{Z}/\lstinline{z} set and clear breakpoints. A version mismatch between stub and host shows up as an unsupported packet, a truncated register set, or \lstinline{Remote 'g' packet reply is too long}.
     \item Kernel debugging is the same protocol against a kernel stub: \lstinline{kgdb} over a serial port, or QEMU with \lstinline{-s -S} (gdbstub on a TCP port, CPU halted at reset) for a full-system target. Symbols come from \lstinline{vmlinux}, and each module needs \lstinline{add-symbol-file} at its load address.
-    \item Embedded targets without an operating system are debugged through the chip's own debug port: JTAG or SWD with a probe (\lstinline{OpenOCD}, \lstinline{J-Link}, Lauterbach). This is the only route into a boot ROM or a bootloader (the binary RE module's boot-chain section), and halting the core mid-boot to step past a signature check is a standard move.
-    \item The Android form of the same recipe is the \lstinline{gdbserver} walk-through in the Android module (Questions 2--3), with its own failure modes: ARM/Thumb mode selection, version pairing, missing symbols, and SELinux denying the attach.
-    \item Emulated targets (\lstinline{QEMU}, \lstinline{Qiling}) are the fallback when hardware access is unavailable: full control over the memory image, but no real device behaviour, which is the same trade the Android module's emulation question makes.
+    \item Embedded targets without an operating system are debugged through the chip's own debug port: JTAG or SWD with a probe (\lstinline{OpenOCD}, \lstinline{J-Link}, Lauterbach). This is the only route into a boot ROM or a bootloader, and halting the core mid-boot to step past a signature check is a standard move.
+    \item The Android form of the same recipe is a \lstinline{gdbserver} session, with its own failure modes: ARM/Thumb mode selection, version pairing, missing symbols, and SELinux denying the attach.
+    \item Emulated targets (\lstinline{QEMU}, \lstinline{Qiling}) are the fallback when hardware access is unavailable: full control over the memory image, but no real device behaviour, which is the same trade an Android emulator makes.
 \end{enumerate}
 
 \section*{Tools Overview}
 \begin{enumerate}
     \item gdb/lldb: the general-purpose pair. gdb strengths: remote, scripting (Python), kernel/embedded; lldb strengths: macOS/iOS first-class, better C++ expression eval, LLDB API.
     \item Windows: WinDbg + kd (kernel), x64dbg (userland, modern UI), Application Verifier/gflags for heap plumbing. Debug engine owns the debug-event loop; expect a different mental model from gdb.
-    \item Time-travel debuggers: rr (Linux, record/replay with deterministic re-execution --- the answer to non-deterministic race bugs the static lectures warn about), Undo, WinDbg TTD. Reverse-continue (\lstinline{reverse-step}) turns ``where did this value come from'' into a bounded search.
-    \item Tracers as poor-man debuggers: \lstinline{strace}/\lstinline{dtrace}/\lstinline{dtruss} and Frida for hook-level visibility without full stop-state control.
-    \item The \lstinline{gdb} front-ends are what make it pleasant: \lstinline{gef}, \lstinline{pwndbg} and \lstinline{peda} add the heap view, the memory map, and the exploit helpers; \lstinline{gdb-dashboard} adds the layout; and \lstinline{gdb} scripting (Python) is the extension point. Choose one and learn its commands, because the vocabulary above is the same in all of them.
+    \item Time-travel debuggers: rr (Linux, record/replay with deterministic re-execution --- the answer to non-deterministic race bugs), Undo, WinDbg TTD. Reverse-continue (\lstinline{reverse-step}) turns ``where did this value come from'' into a bounded search.
+    \item Tracers as lightweight debugger substitutes: \lstinline{strace}/\lstinline{dtrace}/\lstinline{dtruss} and Frida for hook-level visibility without full stop-state control.
+    \item The \lstinline{gdb} front-ends are what make it comfortable to use: \lstinline{gef}, \lstinline{pwndbg} and \lstinline{peda} add the heap view, the memory map, and the exploit helpers; \lstinline{gdb-dashboard} adds the layout; and \lstinline{gdb} scripting (Python) is the extension point. Choose one and learn its commands, because the vocabulary above is the same in all of them.
     \item Debuggers as part of a reversing tool: \lstinline{IDA} and \lstinline{Binary Ninja} both embed a debugger, so the static hypothesis (the decompiler) and the dynamic check (the debugger) live in one place. That is the most efficient arrangement for a reversing session.
-    \item System-wide views worth knowing: \lstinline{perf} for sampling profiles, \lstinline{bpftrace}/eBPF for kernel-level tracing, \lstinline{valgrind} (\lstinline{memcheck}, \lstinline{callgrind}) for memory and profile instrumentation, and \lstinline{rr} for record/replay. Each answers a question the breakpoint debugger answers slowly.
+    \item System-wide views: \lstinline{perf} for sampling profiles, \lstinline{bpftrace}/eBPF for kernel-level tracing, \lstinline{valgrind} (\lstinline{memcheck}, \lstinline{callgrind}) for memory and profile instrumentation, and \lstinline{rr} for record/replay. Each answers a question the breakpoint debugger answers slowly.
     \item Symbol and core tooling: \lstinline{addr2line}, \lstinline{llvm-symbolizer}, \lstinline{ndk-stack} and \lstinline{symbolicatecrash} turn an address or a tombstone into a name; \lstinline{gcore}/\lstinline{coredumpctl} capture cores; \lstinline{objdump}/\lstinline{otool}/\lstinline{dumpbin} read the binary the debugger is attached to.
 \end{enumerate}
 
-\section*{Case Study: Debugging the Course's Own Bug}
+\section*{Case Study: Debugging the Module's Own Targets}
 \begin{enumerate}
-    \item The fuzzing lab target's overflow (\lstinline{lab_target.c:46}), debugged rather than ASan-report-observed:
+    \item A deliberately vulnerable parser's overflow (\lstinline{lab_target.c:46} in this module's \lstinline{targets/} directory), debugged rather than ASan-report-observed:
     \begin{enumerate}
         \item Break at \lstinline{lab_parse}; run \lstinline{./lab_target_asan seed_over}; watch payload\_len collected into registers per the calling convention.
         \item Step to the memcpy: the length argument is 300 while the destination is 64 --- the call itself shows the bug before any report does.
         \item Watchpoint on the destination's redzone address (ASan builds) shows exactly the first OOB write.
-        \item Same session on the heap.c UAF (source auditing lab): watch the freed pointer's buf field; the second DELETE's \lstinline{strcmp} reads it --- reproducing the ASan finding at instruction granularity.
+        \item Same session on the \lstinline{heap.c} UAF (a string-store program with a use-after-free on double DELETE, included in this module): watch the freed pointer's buf field; the second DELETE's \lstinline{strcmp} reads it --- reproducing the ASan finding at instruction granularity.
     \end{enumerate}
     \item Discipline: for every sanitizer report, spend ten minutes showing the same fact in a plain debugger once. That skill is what separates bug reporters from bug confirmers.
-    \item The same case study with the tools named: \lstinline{gdb --args ./lab_target_asan seed_over}, \lstinline{break lab_parse}, \lstinline{run}, \lstinline{x/4gx $rsi} (the length in the second argument register on x86-64 SysV), then \lstinline{stepi} to the \lstinline{memcpy} call. On ARM64 the same arguments are in \lstinline{x0}/\lstinline{x1}, which is why the calling-convention section of the binary RE module is a prerequisite.
+    \item The same case study with the tools named: \lstinline{gdb --args ./lab_target_asan seed_over}, \lstinline{break lab_parse}, \lstinline{run}, \lstinline{x/4gx $rsi} (the length in the second argument register on x86-64 SysV), then \lstinline{stepi} to the \lstinline{memcpy} call. On ARM64 the same arguments are in \lstinline{x0}/\lstinline{x1}, which is why knowing the target's calling convention is a prerequisite.
     \item Turning it into a written understanding: record the register values, the destination buffer size (64), and the actual copy length (the \lstinline{seed_over} payload length, 309 bytes) in the lab report. The debugger session is the evidence; the report is the deliverable.
 \end{enumerate}
 
 \section*{Conclusion}
-Debugging converts static hypotheses into observed facts. The craft items here (watchpoints on attacker data, breakpoint scripts as API tracers, live heap walks, version-matched remote stubs) are what make the other modules' theory stick. Treatment of the same skill on Windows/kernel/embedded substrate differs only in the substrate tax; the method is constant.
+Debugging converts static hypotheses into observed facts. The craft items here (watchpoints on attacker data, breakpoint scripts as API tracers, live heap walks, version-matched remote stubs) are what make static analysis stick. Treatment of the same skill on Windows/kernel/embedded substrate differs only in the substrate cost; the method is constant.
 
-The module's one rule: the debugger is the arbiter. A fuzzing crash, a reversing hypothesis, an audit suspicion, and an exploit theory are all claims until a debugger run shows the same fact at instruction granularity. A finding that cannot be shown in a debugger is a finding that cannot be priced.
+The module's one rule: the debugger is the arbiter. A fuzzing crash, a reversing hypothesis, an audit suspicion, and an exploit theory are all claims until a debugger run shows the same fact at instruction granularity. A finding that cannot be shown in a debugger is a finding that cannot be confirmed.
 
 \section*{References}
 \begin{enumerate}
@@ -147,7 +147,6 @@ The module's one rule: the debugger is the arbiter. A fuzzing crash, a reversing
 	\item LLDB documentation (lldb.llvm.org)
 	\item rr project: rr-project.org
 	\item OpenOCD: openocd.org
-	\item android\_questions.txt in this repo (remote gdbserver drill, Questions 2--3)
 	\item Windows debugging: docs.microsoft.com windbg
 	\item GDB remote serial protocol (sourceware.org/gdb/current/onlinedocs/gdb/Remote-Protocol.html)
 	\item Practical Malware Analysis, Sikorski \& Stolz (dynamic analysis chapters)

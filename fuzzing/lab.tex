@@ -45,9 +45,9 @@
 
 \section*{Setup}
 \begin{enumerate}
-    \item The lab target ships in \lstinline{fuzzing/targets/lab_target.c}: a deliberately vulnerable checksum-gated parser with the wire format
+    \item The lab target ships in \lstinline{targets/lab_target.c}: a deliberately vulnerable checksum-gated parser with the wire format
     $[$magic ``CKS''$]$ $[$2-byte payload\_len$]$ $[$2-byte checksum = sum of payload bytes mod $2^{16}$$]$ $[$payload$]$.
-    The three validation gates are exactly the ``staircase of friction'' from the Mutation Fuzzing lecture: dumb mutation rarely satisfies all three.
+    The three validation gates form a ``staircase of friction'': dumb mutation rarely satisfies all three.
     \item Build the ASan-instrumented binary and the standalone driver (both verified on the reference host):
     \begin{lstlisting}[language=bash]
 clang -g -O1 -fsanitize=fuzzer-no-link,address \\
@@ -73,12 +73,12 @@ clang -g -O1 -fsanitize=fuzzer,address lab_target.o harness.c -o lab_fuzzer
         seed\_ok & valid CKS, 30-byte payload, best sum & 0 \\
         seed\_badmagic & magic byte 0 corrupted & 2 (gate 1) \\
         seed\_badsum & checksum field = 0xBEEF, wrong for payload & 2 (gate 3) \\
-        seed\_shift & type byte 0x80 (negative as \lstinline{char}) & 2 $^{*}$ \\
+        seed\_shift & type byte 0x80 (negative as \lstinline|char|) & 2 $^{*}$ \\
         seed\_over & payload\_len = 300 into 64-byte stack buf & crash: ASan \\
         \bottomrule
         \end{tabular}
         \end{center}
-    \item $^{*}$\,seed\_shift exits 2 on the reference build because the bug in the type gate (\lstinline{char} vs unsigned comparison) compiles to a benign path under this optimizer --- a live example of the lecture's point that sanitizer/tool visibility depends on the build. How would you make that harness path *fail loudly* instead of silently? Try \lstinline{-O0} and \lstinline{-fsanitize=undefined}.
+    \item $^{*}$\,seed\_shift exits 2 on the reference build because the bug in the type gate (\lstinline{char} vs unsigned comparison) compiles to a benign path under this optimizer --- a live example of the lecture's point that sanitizer and tool visibility depend on the build. How would you make that harness path fail loudly instead of silently? Try \lstinline{-O0} and \lstinline{-fsanitize=undefined}.
     \item Which gate does \lstinline{seed_badmagic} fail? Why does \lstinline{seed_len0} (empty payload) not crash?
 \end{enumerate}
 
@@ -95,7 +95,7 @@ clang -g -O1 -fsanitize=fuzzer,address lab_target.o harness.c -o lab_fuzzer
     \begin{lstlisting}[language=bash]
 ./lab_fuzzer -max_len=4096 corpus/
     \end{lstlisting}
-    \item Watch coverage growth. Compare wall-time-to-first-crash against your Exercise 1 count. Explain in one sentence why feedback closes the checksum stair faster than mutation.
+    \item Watch coverage growth. Compare wall-time-to-first-crash against your Exercise 1 count. Explain in one sentence why feedback climbs the checksum staircase faster than mutation.
     \item Add \lstinline{seed_shift} to the corpus and rerun: does the fuzzer find the sign-comparison bug path that the ASan build silenced? What does this tell you about seed curation?
 \end{enumerate}
 
@@ -107,9 +107,9 @@ clang -g -O1 -fsanitize=fuzzer,address lab_target.o harness.c -o lab_fuzzer
         \item Minimize: shrink \lstinline{seed_over}-style inputs to the smallest payload that still crashes. What is the minimum payload\_len that trips ASan's redzone, and why exactly 65? (Allocation is 64; the first OOB byte lands in the redzone.)
         \item Reproduce deterministically: run the minimized input three times; confirm identical stack each time.
         \item Root cause: express the bug in two sentences naming the missing check and the wrong buffer size.
-        \item Exploitability: price the primitive --- attacker controls length and content of the overflow; the buffer is a 64-byte stack local adjacent to (what does \lstinline{otool -tv} show is saved above it?). Apply the lecture's mitigation map: with ASan this input dies at the first OOB byte; without ASan, where does control-flow-relevant overflow begin?
+        \item Exploitability: evaluate the primitive --- attacker controls length and content of the overflow; the buffer is a 64-byte stack local adjacent to (what does \lstinline{otool -tv} show is saved above it?). With ASan this input dies at the first OOB byte; without ASan, where does control-flow-relevant overflow begin?
     \end{enumerate}
-    \item Deliverable: one-paragraph report per the source auditing lecture's \textbf{From Bug to Report} format, with your minimized reproducer attached.
+    \item Deliverable: a one-paragraph report (description, minimized reproducer input, root cause in one or two sentences, exploitability statement against the deployed mitigations), with your minimized reproducer attached.
 \end{enumerate}
 
 \section*{Exercise 4 --- Structure-Aware Generative Fuzzing (stretch)}
@@ -122,7 +122,7 @@ clang -g -O1 -fsanitize=fuzzer,address lab_target.o harness.c -o lab_fuzzer
 \section*{Deliverables}
 \begin{enumerate}
     \item Mutation-vs-feedback wall-time comparison table (Exercises 1 vs 2).
-    \item Minimized crash reproducer and one-paragraph exploitability-priced report (Exercise 3).
+    \item Minimized crash reproducer and one-paragraph report with exploitability statement (Exercise 3).
     \item Generator source plus reach analysis (Exercise 4).
 \end{enumerate}
 
